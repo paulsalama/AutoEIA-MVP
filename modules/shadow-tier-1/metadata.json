@@ -1,0 +1,56 @@
+{
+  "name": "shadow_tier1_screening",
+  "display_name": "Shadow Tier 1 Preliminary Screening",
+  "description": "Initial geospatial proximity analysis to determine if detailed shadow study is warranted. Performs buffer analysis around building footprint based on height to identify potentially affected sensitive sites.",
+  "category": "shadows",
+  "jurisdiction": ["NYC", "generic"],
+  "inputs": {
+    "building_geojson": {
+      "type": "geojson",
+      "description": "Building footprint geometry in GeoJSON format",
+      "optional": false
+    },
+    "building_height_ft": {
+      "type": "number",
+      "description": "Building height in feet",
+      "optional": false
+    },
+    "sensitive_sites": {
+      "type": "geojson",
+      "description": "Layer of sensitive sites (parks, playgrounds, etc.). If not provided, default NYC dataset will be used.",
+      "optional": true
+    },
+    "buffer_multiplier": {
+      "type": "number",
+      "description": "Multiplier for shadow radius (default: 4.0, meaning 4x building height)",
+      "optional": true,
+      "default": 4.0
+    }
+  },
+  "outputs": {
+    "triggered": {
+      "type": "boolean",
+      "description": "Whether detailed analysis is triggered (true if any sensitive sites are within shadow radius)"
+    },
+    "affected_sites": {
+      "type": "geojson",
+      "description": "GeoJSON of sites within shadow radius"
+    },
+    "affected_sites_count": {
+      "type": "number",
+      "description": "Number of sensitive sites within shadow radius"
+    },
+    "shadow_buffer": {
+      "type": "geojson",
+      "description": "Buffer zone representing potential shadow area"
+    },
+    "summary_report": {
+      "type": "text",
+      "description": "Summary of screening results in text format"
+    },
+    "visualization": {
+      "type": "html",
+      "description": "Interactive map showing buffer and intersected sites"
+    }
+  }
+}

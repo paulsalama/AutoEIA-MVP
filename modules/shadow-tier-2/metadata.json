@@ -1,0 +1,67 @@
+{
+  "name": "shadow_tier2_detailed",
+  "display_name": "Shadow Tier 2 Detailed Analysis",
+  "description": "Detailed shadow path calculations for specified dates and times. Configurable for jurisdiction-specific requirements (point-in-time for NYC, time ranges for Boston). Based on UT_Hackathon prototype.",
+  "category": "shadows",
+  "jurisdiction": ["NYC", "Boston", "generic"],
+  "inputs": {
+    "building_geojson": {
+      "type": "geojson",
+      "description": "Building footprint geometry in GeoJSON format",
+      "optional": false
+    },
+    "building_height_ft": {
+      "type": "number",
+      "description": "Building height in feet",
+      "optional": false
+    },
+    "analysis_dates": {
+      "type": "array",
+      "description": "List of dates for shadow analysis (ISO format: YYYY-MM-DD). Common dates include summer/winter solstice, spring/fall equinox.",
+      "optional": false
+    },
+    "time_points": {
+      "type": "array",
+      "description": "Specific times for analysis (HH:MM format). For NYC: specific times. For Boston: time range.",
+      "optional": true
+    },
+    "jurisdiction": {
+      "type": "string",
+      "description": "Jurisdiction for analysis (NYC, Boston, or generic). Determines analysis methodology.",
+      "optional": true,
+      "default": "generic"
+    },
+    "latitude": {
+      "type": "number",
+      "description": "Latitude for solar calculations (auto-detected from geometry if not provided)",
+      "optional": true
+    },
+    "longitude": {
+      "type": "number",
+      "description": "Longitude for solar calculations (auto-detected from geometry if not provided)",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "shadow_geometries": {
+      "type": "geojson",
+      "description": "Calculated shadow polygons for each time point"
+    },
+    "affected_area_sqft": {
+      "type": "number",
+      "description": "Total affected area in square feet"
+    },
+    "analysis_summary": {
+      "type": "object",
+      "description": "Summary statistics including max shadow length, times of max impact, etc."
+    },
+    "summary_report": {
+      "type": "text",
+      "description": "Detailed text report of shadow analysis"
+    },
+    "visualization": {
+      "type": "html",
+      "description": "Interactive map showing shadow paths for all analyzed times"
+    }
+  }
+}
