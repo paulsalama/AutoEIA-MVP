@@ -1,0 +1,72 @@
+{
+  "210": {
+    "name": "Single-Family Detached Housing",
+    "size_unit": "dwelling_units",
+    "daily_rate": 9.44,
+    "am_peak_rate": 0.74,
+    "pm_peak_rate": 1.00
+  },
+  "220": {
+    "name": "Multifamily Housing (Low-Rise)",
+    "size_unit": "dwelling_units",
+    "daily_rate": 7.32,
+    "am_peak_rate": 0.46,
+    "pm_peak_rate": 0.56
+  },
+  "221": {
+    "name": "Multifamily Housing (Mid-Rise)",
+    "size_unit": "dwelling_units",
+    "daily_rate": 5.44,
+    "am_peak_rate": 0.36,
+    "pm_peak_rate": 0.44
+  },
+  "222": {
+    "name": "Multifamily Housing (High-Rise)",
+    "size_unit": "dwelling_units",
+    "daily_rate": 4.20,
+    "am_peak_rate": 0.30,
+    "pm_peak_rate": 0.35
+  },
+  "710": {
+    "name": "General Office Building",
+    "size_unit": "1000_sqft",
+    "daily_rate": 9.74,
+    "am_peak_rate": 1.16,
+    "pm_peak_rate": 1.15
+  },
+  "720": {
+    "name": "Medical-Dental Office Building",
+    "size_unit": "1000_sqft",
+    "daily_rate": 34.80,
+    "am_peak_rate": 2.09,
+    "pm_peak_rate": 3.46
+  },
+  "820": {
+    "name": "Shopping Center",
+    "size_unit": "1000_sqft",
+    "daily_rate": 37.01,
+    "am_peak_rate": 0.94,
+    "pm_peak_rate": 3.40
+  },
+  "850": {
+    "name": "Supermarket",
+    "size_unit": "1000_sqft",
+    "daily_rate": 102.24,
+    "am_peak_rate": 3.82,
+    "pm_peak_rate": 9.48
+  },
+  "931": {
+    "name": "Quality Restaurant",
+    "size_unit": "1000_sqft",
+    "daily_rate": 83.84,
+    "am_peak_rate": 0.73,
+    "pm_peak_rate": 7.49
+  },
+  "932": {
+    "name": "High-Turnover (Sit-Down) Restaurant",
+    "size_unit": "1000_sqft",
+    "daily_rate": 107.20,
+    "am_peak_rate": 9.94,
+    "pm_peak_rate": 9.77
+  }
+}

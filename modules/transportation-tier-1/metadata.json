@@ -1,0 +1,52 @@
+{
+  "name": "transportation_tier1_tripgen",
+  "display_name": "Transportation Tier 1: Trip Generation",
+  "description": "Calculate trip generation based on ITE methodology. Takes proposed land uses and sizes, applies standard trip generation rates, and outputs trip counts for daily and peak periods.",
+  "category": "transportation",
+  "jurisdiction": ["NYC", "generic"],
+  "inputs": {
+    "land_uses": {
+      "type": "array",
+      "description": "Array of land use objects with ite_code, name, size, and size_unit. Example: [{\"ite_code\": \"220\", \"name\": \"Residential\", \"size\": 100, \"size_unit\": \"dwelling_units\"}]",
+      "optional": false
+    },
+    "jurisdiction": {
+      "type": "string",
+      "description": "Jurisdiction for any local rate adjustments (NYC or generic)",
+      "optional": true,
+      "default": "generic"
+    },
+    "analysis_period": {
+      "type": "string",
+      "description": "Analysis period: 'daily', 'am_peak', 'pm_peak', or 'all'",
+      "optional": true,
+      "default": "all"
+    }
+  },
+  "outputs": {
+    "total_daily_trips": {
+      "type": "number",
+      "description": "Total daily vehicle trip ends"
+    },
+    "am_peak_trips": {
+      "type": "number",
+      "description": "AM peak hour vehicle trip ends"
+    },
+    "pm_peak_trips": {
+      "type": "number",
+      "description": "PM peak hour vehicle trip ends"
+    },
+    "trip_breakdown": {
+      "type": "object",
+      "description": "Detailed breakdown of trips by land use category"
+    },
+    "summary_report": {
+      "type": "text",
+      "description": "Formatted summary report of trip generation analysis"
+    },
+    "visualization": {
+      "type": "html",
+      "description": "HTML table visualization of trip generation results"
+    }
+  }
+}
