@@ -1,99 +1,34 @@
 import { useState, useEffect } from 'react'
+import axios from 'axios'
 import './ModuleSidebar.css'
 
-// Sample module data - will be fetched from backend in production
-const sampleModules = [
-  {
-    name: 'shadow_tier1_screening',
-    display_name: 'Shadow Tier 1 Preliminary Screening',
-    description: 'Initial geospatial proximity analysis to determine if detailed shadow study is warranted',
-    category: 'shadows',
-    jurisdiction: ['NYC', 'generic'],
-    inputs: {
-      building_geojson: {
-        type: 'geojson',
-        description: 'Building footprint geometry',
-        optional: false,
-      },
-      building_height_ft: {
-        type: 'number',
-        description: 'Building height in feet',
-        optional: false,
-      },
-      sensitive_sites: {
-        type: 'geojson',
-        description: 'Layer of sensitive sites (parks, playgrounds, etc.)',
-        optional: true,
-      },
-    },
-    outputs: {
-      triggered: {
-        type: 'boolean',
-        description: 'Whether detailed analysis is triggered',
-      },
-      affected_sites: {
-        type: 'geojson',
-        description: 'Sites within shadow radius',
-      },
-      summary_report: {
-        type: 'text',
-        description: 'Summary of screening results',
-      },
-      visualization: {
-        type: 'image',
-        description: 'Map showing buffer and intersected sites',
-      },
-    },
-  },
-  {
-    name: 'shadow_tier2_detailed',
-    display_name: 'Shadow Tier 2 Detailed Analysis',
-    description: 'Detailed shadow path calculations for specified dates and times',
-    category: 'shadows',
-    jurisdiction: ['NYC', 'Boston', 'generic'],
-    inputs: {
-      building_geojson: {
-        type: 'geojson',
-        description: 'Building footprint geometry',
-        optional: false,
-      },
-      building_height_ft: {
-        type: 'number',
-        description: 'Building height in feet',
-        optional: false,
-      },
-      analysis_dates: {
-        type: 'array',
-        description: 'Dates for shadow analysis',
-        optional: false,
-      },
-      time_range: {
-        type: 'object',
-        description: 'Time range for analysis',
-        optional: false,
-      },
-    },
-    outputs: {
-      shadow_geometry: {
-        type: 'geojson',
-        description: 'Calculated shadow polygons',
-      },
-      affected_area_sqft: {
-        type: 'number',
-        description: 'Total affected area in square feet',
-      },
-      visualization: {
-        type: 'image',
-        description: 'Shadow path visualization',
-      },
-    },
-  },
-]
+const API_BASE_URL = 'http://localhost:8000'
 
 function ModuleSidebar() {
-  const [modules, setModules] = useState(sampleModules)
+  const [modules, setModules] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  // Fetch modules from backend
+  useEffect(() => {
+    const fetchModules = async () => {
+      try {
+        setLoading(true)
+        const response = await axios.get(`${API_BASE_URL}/api/modules`)
+        setModules(response.data.modules || [])
+        setError(null)
+      } catch (err) {
+        console.error('Failed to fetch modules:', err)
+        setError('Failed to load modules')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchModules()
+  }, [])
 
   const categories = ['all', ...new Set(modules.map((m) => m.category))]
 
@@ -141,6 +76,11 @@ function ModuleSidebar() {
       </div>
 
       <div className="module-list">
+        {loading && <div className="loading-state">Loading modules...</div>}
+        {error && <div className="error-state">{error}</div>}
+        {!loading && !error && filteredModules.length === 0 && (
+          <div className="empty-state">No modules found</div>
+        )}
         {filteredModules.map((module) => (
           <div
             key={module.name}

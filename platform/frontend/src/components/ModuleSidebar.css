@@ -154,3 +154,17 @@
 .module-list::-webkit-scrollbar-thumb:hover {
   background: #a1a1a1;
 }
+
+/* Loading, error, and empty states */
+.loading-state,
+.error-state,
+.empty-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.error-state {
+  color: #dc2626;
+}

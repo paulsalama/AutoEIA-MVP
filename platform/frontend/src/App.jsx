@@ -1,10 +1,60 @@
-import { useState } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import WorkflowBuilder from './components/WorkflowBuilder'
 import ModuleSidebar from './components/ModuleSidebar'
+import NodeConfigPanel from './components/NodeConfigPanel'
+import OutputVisualizationPanel from './components/OutputVisualizationPanel'
 import './App.css'
 
 function App() {
   const [selectedNode, setSelectedNode] = useState(null)
+  const [workflowResults, setWorkflowResults] = useState(null)
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [workflowNodes, setWorkflowNodes] = useState([])
+
+  // Ref to access WorkflowBuilder's updateNodeConfig function
+  const workflowBuilderRef = useRef(null)
+
+  const handleNodeSelect = useCallback((node) => {
+    setSelectedNode(node)
+  }, [])
+
+  const handleCloseConfigPanel = useCallback(() => {
+    setSelectedNode(null)
+  }, [])
+
+  const handleWorkflowStart = useCallback(() => {
+    setIsExecuting(true)
+    setWorkflowResults(null)
+  }, [])
+
+  const handleWorkflowComplete = useCallback((results, nodes) => {
+    setWorkflowResults(results)
+    setWorkflowNodes(nodes)
+    setIsExecuting(false)
+  }, [])
+
+  const handleCloseResultsPanel = useCallback(() => {
+    setWorkflowResults(null)
+  }, [])
+
+  const handleUpdateNodeConfig = useCallback((nodeId, configuredInputs) => {
+    if (workflowBuilderRef.current?.updateNodeConfig) {
+      workflowBuilderRef.current.updateNodeConfig(nodeId, configuredInputs)
+      // Update selectedNode to reflect changes
+      setSelectedNode(prev => {
+        if (prev && prev.id === nodeId) {
+          return {
+            ...prev,
+            data: {
+              ...prev.data,
+              configuredInputs
+            }
+          }
+        }
+        return prev
+      })
+    }
+  }, [])
 
   return (
     <div className="app-container">
@@ -15,10 +65,33 @@ function App() {
 
       <div className="app-main">
         <ModuleSidebar />
-        <WorkflowBuilder
-          selectedNode={selectedNode}
-          onNodeSelect={setSelectedNode}
-        />
+
+        <div className="center-area">
+          <WorkflowBuilder
+            ref={workflowBuilderRef}
+            selectedNode={selectedNode}
+            onNodeSelect={handleNodeSelect}
+            onWorkflowStart={handleWorkflowStart}
+            onWorkflowComplete={handleWorkflowComplete}
+            isExecuting={isExecuting}
+          />
+
+          {workflowResults && (
+            <OutputVisualizationPanel
+              results={workflowResults}
+              nodes={workflowNodes}
+              onClose={handleCloseResultsPanel}
+            />
+          )}
+        </div>
+
+        {selectedNode && (
+          <NodeConfigPanel
+            selectedNode={selectedNode}
+            onUpdateNodeConfig={handleUpdateNodeConfig}
+            onClose={handleCloseConfigPanel}
+          />
+        )}
       </div>
     </div>
   )

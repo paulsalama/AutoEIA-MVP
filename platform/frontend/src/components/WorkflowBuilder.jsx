@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, forwardRef, useImperativeHandle } from 'react'
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -8,16 +8,42 @@ import ReactFlow, {
   addEdge,
   MarkerType,
 } from 'reactflow'
+import axios from 'axios'
 import 'reactflow/dist/style.css'
 import './WorkflowBuilder.css'
 
 const initialNodes = []
 const initialEdges = []
 
-function WorkflowBuilder({ selectedNode, onNodeSelect }) {
+const API_BASE_URL = 'http://localhost:8000'
+
+const WorkflowBuilder = forwardRef(function WorkflowBuilder(
+  { selectedNode, onNodeSelect, onWorkflowStart, onWorkflowComplete, isExecuting },
+  ref
+) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [workflowName, setWorkflowName] = useState('Untitled Workflow')
+
+  // Expose updateNodeConfig to parent via ref
+  useImperativeHandle(ref, () => ({
+    updateNodeConfig: (nodeId, configuredInputs) => {
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                configuredInputs,
+              },
+            }
+          }
+          return node
+        })
+      )
+    },
+  }))
 
   const onConnect = useCallback(
     (params) =>
@@ -86,11 +112,42 @@ function WorkflowBuilder({ selectedNode, onNodeSelect }) {
   }, [])
 
   const handleRunWorkflow = async () => {
-    console.log('Running workflow with nodes:', nodes)
-    console.log('Edges:', edges)
+    if (nodes.length === 0) {
+      alert('Add modules to the workflow before running')
+      return
+    }
 
-    // TODO: Implement API call to backend
-    alert('Workflow execution will be implemented with backend integration')
+    // Notify parent that execution is starting
+    if (onWorkflowStart) {
+      onWorkflowStart()
+    }
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/workflow/execute`, {
+        name: workflowName,
+        nodes: nodes,
+        edges: edges,
+      })
+
+      if (response.data.success) {
+        // Notify parent with results and current nodes
+        if (onWorkflowComplete) {
+          onWorkflowComplete(response.data.results, nodes)
+        }
+      } else {
+        alert(`Workflow execution failed: ${response.data.error}`)
+        if (onWorkflowComplete) {
+          onWorkflowComplete(null, nodes)
+        }
+      }
+    } catch (error) {
+      console.error('Workflow execution error:', error)
+      const errorMessage = error.response?.data?.error || error.message
+      alert(`Error executing workflow: ${errorMessage}`)
+      if (onWorkflowComplete) {
+        onWorkflowComplete(null, nodes)
+      }
+    }
   }
 
   const handleSaveWorkflow = () => {
@@ -142,8 +199,12 @@ function WorkflowBuilder({ selectedNode, onNodeSelect }) {
           placeholder="Workflow name"
         />
         <div className="toolbar-actions">
-          <button onClick={handleRunWorkflow} className="btn btn-primary">
-            Run Workflow
+          <button
+            onClick={handleRunWorkflow}
+            className="btn btn-primary"
+            disabled={isExecuting}
+          >
+            {isExecuting ? 'Running...' : 'Run Workflow'}
           </button>
           <button onClick={handleSaveWorkflow} className="btn btn-secondary">
             Save Workflow
@@ -179,6 +240,6 @@ function WorkflowBuilder({ selectedNode, onNodeSelect }) {
       </div>
     </div>
   )
-}
+})
 
 export default WorkflowBuilder
