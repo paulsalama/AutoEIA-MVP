@@ -1,0 +1,26 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-73.9855, 40.7575],
+          [-73.9845, 40.7575],
+          [-73.9845, 40.7565],
+          [-73.9855, 40.7565],
+          [-73.9855, 40.7575]
+        ]]
+      },
+      "properties": {
+        "name": "Example Tall Tower",
+        "description": "High-rise tower near Bryant Park",
+        "address": "Midtown Manhattan, NYC",
+        "suggested_height_ft": 800,
+        "footprint_area_sqft": 43560,
+        "stories": 60
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-73.9870, 40.7600],
+          [-73.9865, 40.7600],
+          [-73.9865, 40.7595],
+          [-73.9870, 40.7595],
+          [-73.9870, 40.7600]
+        ]]
+      },
+      "properties": {
+        "name": "Example Small Building",
+        "description": "Small commercial building near Central Park",
+        "address": "Midtown Manhattan, NYC",
+        "suggested_height_ft": 60,
+        "footprint_area_sqft": 10890
+      }
+    }
+  ]
+}

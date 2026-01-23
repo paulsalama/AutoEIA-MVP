@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-73.9851, 40.7589],
+          [-73.9841, 40.7589],
+          [-73.9841, 40.7579],
+          [-73.9851, 40.7579],
+          [-73.9851, 40.7589]
+        ]]
+      },
+      "properties": {
+        "name": "Example Midtown Building",
+        "description": "Sample building footprint near Times Square",
+        "address": "Midtown Manhattan, NYC",
+        "suggested_height_ft": 200,
+        "footprint_area_sqft": 43560
+      }
+    }
+  ]
+}
