@@ -15,21 +15,31 @@
       "description": "Building height in feet",
       "optional": false
     },
+    "jurisdiction": {
+      "type": "enum",
+      "enum": ["NYC", "Boston", "generic"],
+      "description": "Jurisdiction for analysis. Determines analysis methodology and default parameters.",
+      "optional": false
+    },
     "analysis_dates": {
       "type": "array",
       "description": "List of dates for shadow analysis (ISO format: YYYY-MM-DD). Common dates include summer/winter solstice, spring/fall equinox.",
-      "optional": false
+      "optional": false,
+      "jurisdiction_defaults": {
+        "NYC": ["2024-03-20", "2024-06-21", "2024-09-22", "2024-12-21"],
+        "Boston": ["2024-03-20", "2024-06-21", "2024-09-22", "2024-12-21"],
+        "generic": ["2024-06-21", "2024-12-21"]
+      }
     },
     "time_points": {
       "type": "array",
-      "description": "Specific times for analysis (HH:MM format). For NYC: specific times. For Boston: time range.",
-      "optional": true
-    },
-    "jurisdiction": {
-      "type": "string",
-      "description": "Jurisdiction for analysis (NYC, Boston, or generic). Determines analysis methodology.",
+      "description": "Specific times for analysis (HH:MM format). Auto-populated based on jurisdiction.",
       "optional": true,
-      "default": "generic"
+      "jurisdiction_defaults": {
+        "NYC": ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"],
+        "Boston": ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"],
+        "generic": ["09:00", "12:00", "15:00"]
+      }
     },
     "latitude": {
       "type": "number",

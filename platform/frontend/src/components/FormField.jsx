@@ -81,6 +81,22 @@ function FormField({ name, schema, value, onChange, required }) {
           />
         )
 
+      case 'enum':
+        return (
+          <select
+            value={value ?? ''}
+            onChange={(e) => onChange(e.target.value || null)}
+            className="form-select"
+          >
+            <option value="">Select...</option>
+            {schema.enum?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        )
+
       case 'boolean':
         return (
           <label className="toggle-label">

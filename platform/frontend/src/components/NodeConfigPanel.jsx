@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect } from 'react'
 import FormField from './FormField'
 import './NodeConfigPanel.css'
 
@@ -24,6 +24,32 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose }) {
 
     return { requiredInputs: required, optionalInputs: optional }
   }, [moduleData])
+
+  // Auto-populate fields based on jurisdiction selection
+  useEffect(() => {
+    const jurisdiction = configuredInputs.jurisdiction
+    if (!jurisdiction || !moduleData?.inputs) return
+
+    const newInputs = { ...configuredInputs }
+    let hasChanges = false
+
+    // Check each input for jurisdiction_defaults
+    Object.entries(moduleData.inputs).forEach(([fieldName, schema]) => {
+      if (fieldName === 'jurisdiction') return // Skip the jurisdiction field itself
+
+      if (schema.jurisdiction_defaults && schema.jurisdiction_defaults[jurisdiction]) {
+        // Only auto-populate if the field is empty
+        if (!configuredInputs[fieldName]) {
+          newInputs[fieldName] = schema.jurisdiction_defaults[jurisdiction]
+          hasChanges = true
+        }
+      }
+    })
+
+    if (hasChanges) {
+      onUpdateNodeConfig(selectedNode.id, newInputs)
+    }
+  }, [configuredInputs.jurisdiction, moduleData, selectedNode.id, onUpdateNodeConfig])
 
   const handleFieldChange = (fieldName, value) => {
     const newInputs = { ...configuredInputs }
