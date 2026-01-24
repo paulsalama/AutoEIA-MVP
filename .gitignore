@@ -24,7 +24,7 @@ platform/frontend/build/
 .env.production
 
 # IDE
-.vscode/
+.vscode/settings.local.json  # Personal VS Code settings
 .idea/
 *.swp
 *.swo
