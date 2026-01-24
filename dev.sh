@@ -52,7 +52,7 @@ cd ../frontend
 
 if [ ! -d "node_modules" ]; then
     echo -e "${YELLOW}Installing npm dependencies...${NC}"
-    npm install
+    npm install --legacy-peer-deps
 fi
 
 echo -e "${GREEN}✓ Frontend starting on http://localhost:5173${NC}"
