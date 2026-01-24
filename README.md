@@ -31,19 +31,58 @@ autoeia/
 
 ## Getting Started
 
-### Frontend
+### Quick Start (Recommended)
+
+Start both frontend and backend with a single command:
+
+```bash
+./dev.sh
+```
+
+This script will:
+- Create and activate Python virtual environment (using uv)
+- Install all Python dependencies
+- Install all Node.js dependencies
+- Start the backend on `http://localhost:8000`
+- Start the frontend on `http://localhost:5173`
+- Gracefully shutdown both services with `Ctrl+C`
+
+### Manual Setup
+
+If you prefer to run services separately:
+
+#### Frontend
 ```bash
 cd platform/frontend
 npm install
 npm run dev
 ```
 
-### Backend
+#### Backend
 ```bash
 cd platform/backend
-pip install -r requirements.txt
-python app.py
+uv venv                          # Create virtual environment
+uv sync                          # Install dependencies
+uv run python app.py             # Run the application
 ```
+
+### VS Code Debugging
+
+This project includes VS Code launch configurations for debugging:
+
+1. **Backend: Flask** - Debug the Python Flask backend
+2. **Frontend: Vite Dev Server** - Run the Vite dev server
+3. **Frontend: Chrome Debug** - Debug React app in Chrome
+4. **Full Stack: Frontend + Backend** - Debug both simultaneously
+5. **Full Stack: With Browser** - Debug backend, frontend, and browser together
+
+To use:
+1. Open the project in VS Code
+2. Go to Run and Debug (Cmd+Shift+D / Ctrl+Shift+D)
+3. Select a configuration from the dropdown
+4. Press F5 or click the green play button
+
+The compound configurations will start multiple services and allow you to debug across the entire stack.
 
 ## Technology Stack
 
