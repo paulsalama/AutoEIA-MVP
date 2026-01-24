@@ -62,7 +62,7 @@ npm run dev
 ```bash
 cd platform/backend
 uv venv                          # Create virtual environment
-uv sync                          # Install dependencies
+uv pip install -r requirements.txt  # Install dependencies
 uv run python app.py             # Run the application
 ```
 

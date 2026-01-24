@@ -37,7 +37,7 @@ if [ ! -d ".venv" ]; then
 fi
 
 echo -e "${YELLOW}Installing/syncing dependencies...${NC}"
-uv sync
+uv pip install -r requirements.txt
 
 echo -e "${GREEN}✓ Backend starting on http://localhost:8000${NC}"
 uv run python app.py &
