@@ -9,20 +9,25 @@
 .app-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 1.5rem 2rem;
+  padding: 0.5rem 1.5rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 1.75rem;
+  font-size: 1.1rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .app-header p {
-  margin: 0.5rem 0 0 0;
-  font-size: 0.9rem;
-  opacity: 0.9;
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.8;
 }
 
 .app-main {

@@ -1,7 +1,8 @@
 {
   "name": "shadow_tier2_directional",
   "display_name": "Shadow Tier 2: Directional Screening",
-  "description": "CEQR Tier 2 directional screen. Eliminates sensitive resources that lie within the triangular zone south of the project site that can never receive shadow (between \u00b1108\u00b0 from true north). Resources remaining in the 'can be shaded' arc proceed to Tier 3 analysis.",
+  "emoji": "🧭",
+  "description": "CEQR Tier 2 directional screen. Eliminates sensitive resources in the triangular no-shadow zone south of the building (\u00b1108\u00b0 from true north). Remaining sites proceed to Tier 3.",
   "category": "shadows",
   "jurisdiction": ["NYC", "generic"],
   "inputs": {
@@ -23,7 +24,7 @@
     },
     "sensitive_sites": {
       "type": "geojson",
-      "description": "Sensitive sites GeoJSON from Tier 1 output or custom dataset. If omitted, uses default NYC dataset.",
+      "description": "Sensitive sites GeoJSON. If omitted, uses default NYC Parks dataset.",
       "optional": true
     }
   },

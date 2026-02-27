@@ -1,6 +1,5 @@
 import { useCallback, useState, forwardRef, useImperativeHandle } from 'react'
 import ReactFlow, {
-  MiniMap,
   Controls,
   Background,
   useNodesState,
@@ -88,8 +87,10 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
         id: `${moduleData.name}-${Date.now()}`,
         type: 'default',
         position,
+        sourcePosition: 'right',
+        targetPosition: 'left',
         data: {
-          label: moduleData.display_name,
+          label: (moduleData.emoji ? moduleData.emoji + ' ' : '') + moduleData.display_name,
           moduleData: moduleData,
         },
         style: {
@@ -234,7 +235,6 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           fitView
         >
           <Controls />
-          <MiniMap />
           <Background variant="dots" gap={12} size={1} />
         </ReactFlow>
       </div>

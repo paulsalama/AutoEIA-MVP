@@ -1,7 +1,8 @@
 {
   "name": "shadow_tier1_screening",
-  "display_name": "Shadow Tier 1 Preliminary Screening",
-  "description": "Initial geospatial proximity analysis to determine if detailed shadow study is warranted. Performs buffer analysis around building footprint based on height to identify potentially affected sensitive sites.",
+  "display_name": "Shadow Tier 1: Preliminary Screening",
+  "emoji": "🔍",
+  "description": "Initial proximity analysis: is a detailed shadow study warranted? Buffers the building footprint by 4.3x height (CEQR longest-shadow factor) and checks for sensitive sites within the study area.",
   "category": "shadows",
   "jurisdiction": ["NYC", "generic"],
   "inputs": {
@@ -12,25 +13,35 @@
     },
     "building_height_ft": {
       "type": "number",
-      "description": "Building height in feet",
+      "description": "Building height in feet including all rooftop equipment",
+      "optional": false
+    },
+    "jurisdiction": {
+      "type": "enum",
+      "enum": ["NYC", "generic"],
+      "description": "Jurisdiction. NYC uses CEQR 4.3x buffer multiplier.",
       "optional": false
     },
     "sensitive_sites": {
       "type": "geojson",
-      "description": "Layer of sensitive sites (parks, playgrounds, etc.). If not provided, default NYC dataset will be used.",
+      "description": "Sensitive sites dataset. If omitted, uses default NYC Parks dataset.",
       "optional": true
     },
     "buffer_multiplier": {
       "type": "number",
-      "description": "Multiplier for shadow radius (default: 4.0, meaning 4x building height)",
+      "description": "Shadow radius multiplier (CEQR NYC default: 4.3). Override only if needed.",
       "optional": true,
-      "default": 4.0
+      "default": 4.3,
+      "jurisdiction_defaults": {
+        "NYC": 4.3,
+        "generic": 4.0
+      }
     }
   },
   "outputs": {
     "triggered": {
       "type": "boolean",
-      "description": "Whether detailed analysis is triggered (true if any sensitive sites are within shadow radius)"
+      "description": "True if any sensitive sites fall within the shadow study area (Tier 2 required)"
     },
     "affected_sites": {
       "type": "geojson",
@@ -42,11 +53,11 @@
     },
     "shadow_buffer": {
       "type": "geojson",
-      "description": "Buffer zone representing potential shadow area"
+      "description": "Buffer zone representing the longest-shadow study area"
     },
     "summary_report": {
       "type": "text",
-      "description": "Summary of screening results in text format"
+      "description": "Summary of screening results"
     },
     "visualization": {
       "type": "html",

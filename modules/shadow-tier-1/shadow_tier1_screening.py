@@ -68,7 +68,7 @@ def execute(inputs):
             sites_gdf.set_crs(epsg=4326, inplace=True)
     else:
         # Use default NYC dataset if available
-        default_sites_path = Path(__file__).parent.parent.parent / 'datasets' / 'nyc_sensitive_sites.geojson'
+        default_sites_path = Path(__file__).parent.parent.parent / 'datasets' / 'NYC_Parks_Zones (2).geojson'
         if default_sites_path.exists():
             sites_gdf = gpd.read_file(default_sites_path)
         else:
@@ -104,7 +104,7 @@ Tier 2 Analysis Triggered: {'YES' if triggered else 'NO'}
         if affected_count <= 3:
             summary_report += f"The following {affected_count} site(s) may be affected:\n"
             for idx, site in affected_sites.iterrows():
-                site_name = site.get('name', site.get('sitename', f'Site {idx}'))
+                site_name = site.get('propname', site.get('name', f'Site {idx}'))
                 summary_report += f"  - {site_name}\n"
     else:
         summary_report += "Recommendation: No further shadow analysis required.\n"

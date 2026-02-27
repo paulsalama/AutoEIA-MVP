@@ -65,3 +65,4 @@ nul
 
 # Root package-lock (frontend has its own)
 /package-lock.json
+docs/CEQR_Shadows_2025_text.txt

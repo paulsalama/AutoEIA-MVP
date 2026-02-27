@@ -88,6 +88,9 @@ function ModuleSidebar() {
             draggable
             onDragStart={(e) => onDragStart(e, module)}
           >
+            {module.emoji && (
+              <div className="module-emoji">{module.emoji}</div>
+            )}
             <div className="module-header">
               <h3>{module.display_name}</h3>
               <span className="module-category">{module.category}</span>

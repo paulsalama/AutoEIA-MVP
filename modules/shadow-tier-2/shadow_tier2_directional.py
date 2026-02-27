@@ -51,7 +51,7 @@ def execute(inputs):
         if sites_gdf.crs is None:
             sites_gdf.set_crs(epsg=4326, inplace=True)
     else:
-        default_path = Path(__file__).parent.parent.parent / 'datasets' / 'nyc_sensitive_sites.geojson'
+        default_path = Path(__file__).parent.parent.parent / 'datasets' / 'NYC_Parks_Zones (2).geojson'
         if default_path.exists():
             sites_gdf = gpd.read_file(str(default_path))
         else:
@@ -68,7 +68,7 @@ def execute(inputs):
 
     for idx, row in sites_gdf.iterrows():
         geom = row.geometry
-        name = row.get('name', f'Site {idx + 1}')
+        name = row.get('propname', row.get('name', f'Site {idx + 1}'))
 
         # A site is eliminated only if it lies ENTIRELY within the no-shadow zone
         if no_shadow_polygon.contains(geom):

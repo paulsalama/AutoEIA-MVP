@@ -1,6 +1,7 @@
 {
   "name": "transportation_tier1_tripgen",
   "display_name": "Transportation Tier 1: Trip Generation",
+  "emoji": "🚗",
   "description": "Calculate trip generation based on ITE methodology. Takes proposed land uses and sizes, applies standard trip generation rates, and outputs trip counts for daily and peak periods.",
   "category": "transportation",
   "jurisdiction": ["NYC", "generic"],
@@ -11,8 +12,9 @@
       "optional": false
     },
     "jurisdiction": {
-      "type": "string",
-      "description": "Jurisdiction for any local rate adjustments (NYC or generic)",
+      "type": "enum",
+      "enum": ["NYC", "generic"],
+      "description": "Jurisdiction for local rate adjustments",
       "optional": true,
       "default": "generic"
     },

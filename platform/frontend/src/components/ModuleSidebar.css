@@ -168,3 +168,9 @@
 .error-state {
   color: #dc2626;
 }
+
+.module-emoji {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
