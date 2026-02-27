@@ -15,6 +15,16 @@ function OutputRenderer({ output, moduleMetadata }) {
     return 0
   }
 
+  // Extract names from GeoJSON features (tries common name fields)
+  const extractFeatureNames = (geojson) => {
+    const features = geojson?.features || (geojson?.type === 'Feature' ? [geojson] : [])
+    if (features.length === 0) return []
+    const nameFields = ['signname', 'propname', 'name', 'display_name', 'title', 'site_name']
+    const nameField = nameFields.find(f => f in (features[0]?.properties || {}))
+    if (!nameField) return []
+    return [...new Set(features.map(f => f.properties[nameField]).filter(Boolean))]
+  }
+
   const renderOutputValue = (key, value, schema) => {
     const type = schema?.type || typeof value
 
@@ -62,18 +72,27 @@ function OutputRenderer({ output, moduleMetadata }) {
           </div>
         )
 
-      case 'geojson':
+      case 'geojson': {
+        const count = countFeatures(value)
+        const names = extractFeatureNames(value)
+        const SHOW_MAX = 12
         return (
           <div className="output-item geojson-output" key={key}>
             <h5 className="output-label">{formatLabel(key)}</h5>
-            <details className="geojson-details">
-              <summary>
-                View GeoJSON ({countFeatures(value)} feature{countFeatures(value) !== 1 ? 's' : ''})
-              </summary>
-              <pre className="json-content">{JSON.stringify(value, null, 2)}</pre>
-            </details>
+            <span className="geojson-count">{count} feature{count !== 1 ? 's' : ''}</span>
+            {names.length > 0 && (
+              <div className="geojson-names">
+                {names.slice(0, SHOW_MAX).map((n, i) => (
+                  <span key={i} className="site-chip">{n}</span>
+                ))}
+                {names.length > SHOW_MAX && (
+                  <span className="site-chip more">+{names.length - SHOW_MAX} more</span>
+                )}
+              </div>
+            )}
           </div>
         )
+      }
 
       case 'image':
         return (
@@ -117,10 +136,20 @@ function OutputRenderer({ output, moduleMetadata }) {
     return <div className="output-empty">No output data</div>
   }
 
-  // Sort outputs: visualization and summary_report last (they're usually larger)
-  const sortedEntries = Object.entries(output).sort(([a], [b]) => {
-    const priority = { visualization: 2, summary_report: 1 }
-    return (priority[a] || 0) - (priority[b] || 0)
+  // Sort outputs: key metrics first, then geojson/text, visualization last
+  const sortedEntries = Object.entries(output).sort(([a, av], [b, bv]) => {
+    const priority = (key, val) => {
+      if (key === 'visualization') return 10
+      if (key === 'summary_report') return 8
+      if (key === 'shadow_buffer' || key === 'no_shadow_zone') return 6
+      const schema = outputSchemas[key]
+      const type = schema?.type || (typeof val === 'boolean' ? 'boolean' : typeof val === 'number' ? 'number' : 'other')
+      if (type === 'boolean') return 0
+      if (type === 'number') return 1
+      if (type === 'geojson') return 5
+      return 3
+    }
+    return priority(a, av) - priority(b, bv)
   })
 
   return (

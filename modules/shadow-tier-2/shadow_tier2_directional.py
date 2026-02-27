@@ -27,7 +27,6 @@ def execute(inputs):
     building_geojson = inputs.get('building_geojson')
     building_height_ft = inputs.get('building_height_ft')
     jurisdiction = inputs.get('jurisdiction', 'NYC')
-    sensitive_sites_input = inputs.get('sensitive_sites')
 
     if not building_geojson:
         raise ValueError("building_geojson is required")
@@ -43,7 +42,9 @@ def execute(inputs):
 
     building_union = unary_union(building_gdf.geometry)
 
-    # Load sensitive sites
+    # Load sensitive sites — prefer passed-in data, then Tier 1 affected_sites, then filter default dataset
+    sensitive_sites_input = inputs.get('sensitive_sites') or inputs.get('affected_sites')
+
     if sensitive_sites_input:
         if isinstance(sensitive_sites_input, str):
             sensitive_sites_input = json.loads(sensitive_sites_input)
@@ -51,9 +52,19 @@ def execute(inputs):
         if sites_gdf.crs is None:
             sites_gdf.set_crs(epsg=4326, inplace=True)
     else:
-        default_path = Path(__file__).parent.parent.parent / 'datasets' / 'NYC_Parks_Zones (2).geojson'
+        # No upstream data — load default dataset and apply Tier 1 buffer to limit scope
+        default_path = Path(__file__).parent.parent.parent / 'datasets' / 'nyc_dpr_parks_properties.geojson'
         if default_path.exists():
             sites_gdf = gpd.read_file(str(default_path))
+            for col in sites_gdf.select_dtypes(include=['datetime64']).columns:
+                sites_gdf[col] = sites_gdf[col].astype(str)
+            # Apply Tier 1 buffer filter (4.3× height) so we only screen reachable sites
+            shadow_radius_m = building_height_ft * 0.3048 * 4.3
+            building_proj = building_gdf.to_crs(epsg=3857)
+            buf = gpd.GeoDataFrame(geometry=building_proj.buffer(shadow_radius_m), crs='EPSG:3857').to_crs(epsg=4326)
+            sites_gdf = gpd.sjoin(sites_gdf, buf, how='inner', predicate='intersects')
+            if 'index_right' in sites_gdf.columns:
+                sites_gdf = sites_gdf.drop(columns=['index_right'])
         else:
             sites_gdf = gpd.GeoDataFrame(
                 {'name': [], 'geometry': []}, crs='EPSG:4326'
@@ -68,7 +79,7 @@ def execute(inputs):
 
     for idx, row in sites_gdf.iterrows():
         geom = row.geometry
-        name = row.get('propname', row.get('name', f'Site {idx + 1}'))
+        name = row.get('signname', row.get('propname', row.get('name', f'Site {idx + 1}')))
 
         # A site is eliminated only if it lies ENTIRELY within the no-shadow zone
         if no_shadow_polygon.contains(geom):
@@ -76,7 +87,9 @@ def execute(inputs):
         else:
             requiring_tier3.append(row)
 
-    # Build output GeoJSON collections
+    # Build output GeoJSON collections (keep only essential fields to limit response size)
+    KEEP_PROPS = {'signname', 'propname', 'name', 'typecategory', 'borough', 'acres'}
+
     def rows_to_geojson(rows):
         features = []
         for row in rows:
@@ -84,8 +97,9 @@ def execute(inputs):
                 'type': 'Feature',
                 'geometry': mapping(row.geometry),
                 'properties': {
-                    k: v for k, v in row.items()
-                    if k != 'geometry' and not callable(v)
+                    k: str(v) if v is not None else None
+                    for k, v in row.items()
+                    if k in KEEP_PROPS
                 }
             }
             features.append(feat)
@@ -175,8 +189,8 @@ def generate_report(height_ft, jurisdiction, eliminated, requiring_tier3, trigge
     n_tier3 = len(requiring_tier3)
     total = n_elim + n_tier3
 
-    elim_names = [r.get('name', 'Unknown') for r in eliminated]
-    tier3_names = [r.get('name', 'Unknown') for r in requiring_tier3]
+    elim_names = [r.get('signname', r.get('propname', r.get('name', 'Unknown'))) for r in eliminated]
+    tier3_names = [r.get('signname', r.get('propname', r.get('name', 'Unknown'))) for r in requiring_tier3]
 
     report = f"""Shadow Tier 2: Directional Screening Results
 =============================================
@@ -197,15 +211,19 @@ Tier 3 triggered: {'YES' if triggered else 'NO'}
     if elim_names:
         report += "ELIMINATED SITES (south of building — cannot receive shadow)\n"
         report += "-" * 60 + "\n"
-        for name in elim_names:
+        for name in elim_names[:10]:
             report += f"  [OK] {name}\n"
+        if len(elim_names) > 10:
+            report += f"  ... and {len(elim_names) - 10} more\n"
         report += "\n"
 
     if tier3_names:
         report += "SITES REQUIRING TIER 3 ANALYSIS\n"
         report += "-" * 60 + "\n"
-        for name in tier3_names:
+        for name in tier3_names[:10]:
             report += f"  -> {name}\n"
+        if len(tier3_names) > 10:
+            report += f"  ... and {len(tier3_names) - 10} more\n"
         report += "\n"
 
     if triggered:
@@ -254,53 +272,45 @@ def create_visualization(building_gdf, no_shadow_polygon, eliminated, requiring_
         tooltip='Proposed Building'
     ).add_to(m)
 
-    # Eliminated sites (green)
-    for row in eliminated:
-        geom = row.geometry
-        name = row.get('name', 'Site')
-        if geom.geom_type == 'Point':
-            folium.CircleMarker(
-                location=[geom.y, geom.x],
-                radius=8,
-                color='#16a34a',
-                fill=True,
-                fill_color='#22c55e',
-                fill_opacity=0.8,
-                tooltip=f'✓ Eliminated: {name}'
-            ).add_to(m)
-        else:
-            folium.GeoJson(
-                mapping(geom),
-                style_function=lambda x: {
-                    'fillColor': '#22c55e', 'color': '#16a34a',
-                    'weight': 2, 'fillOpacity': 0.5
-                },
-                tooltip=f'✓ Eliminated: {name}'
-            ).add_to(m)
+    # Eliminated sites — single batched layer (green)
+    if eliminated:
+        elim_fc = {
+            'type': 'FeatureCollection',
+            'features': [
+                {'type': 'Feature', 'geometry': mapping(r.geometry),
+                 'properties': {'name': r.get('signname', r.get('propname', r.get('name', 'Site')))}}
+                for r in eliminated
+            ]
+        }
+        folium.GeoJson(
+            elim_fc,
+            name='Eliminated (south of building)',
+            style_function=lambda x: {
+                'fillColor': '#22c55e', 'color': '#16a34a',
+                'weight': 1, 'fillOpacity': 0.4
+            },
+            tooltip=folium.GeoJsonTooltip(fields=['name'], aliases=['✓ Eliminated:'], sticky=False)
+        ).add_to(m)
 
-    # Sites requiring Tier 3 (red/orange)
-    for row in requiring_tier3:
-        geom = row.geometry
-        name = row.get('name', 'Site')
-        if geom.geom_type == 'Point':
-            folium.CircleMarker(
-                location=[geom.y, geom.x],
-                radius=8,
-                color='#dc2626',
-                fill=True,
-                fill_color='#f87171',
-                fill_opacity=0.8,
-                tooltip=f'→ Tier 3 required: {name}'
-            ).add_to(m)
-        else:
-            folium.GeoJson(
-                mapping(geom),
-                style_function=lambda x: {
-                    'fillColor': '#f87171', 'color': '#dc2626',
-                    'weight': 2, 'fillOpacity': 0.5
-                },
-                tooltip=f'→ Tier 3 required: {name}'
-            ).add_to(m)
+    # Sites requiring Tier 3 — single batched layer (red)
+    if requiring_tier3:
+        tier3_fc = {
+            'type': 'FeatureCollection',
+            'features': [
+                {'type': 'Feature', 'geometry': mapping(r.geometry),
+                 'properties': {'name': r.get('signname', r.get('propname', r.get('name', 'Site')))}}
+                for r in requiring_tier3
+            ]
+        }
+        folium.GeoJson(
+            tier3_fc,
+            name='Requires Tier 3 analysis',
+            style_function=lambda x: {
+                'fillColor': '#f87171', 'color': '#dc2626',
+                'weight': 1, 'fillOpacity': 0.4
+            },
+            tooltip=folium.GeoJsonTooltip(fields=['name'], aliases=['→ Tier 3:'], sticky=False)
+        ).add_to(m)
 
     folium.LayerControl().add_to(m)
     return m._repr_html_()

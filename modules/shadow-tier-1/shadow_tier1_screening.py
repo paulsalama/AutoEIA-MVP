@@ -29,7 +29,7 @@ def execute(inputs):
     building_geojson = inputs.get('building_geojson')
     building_height_ft = inputs.get('building_height_ft')
     sensitive_sites_geojson = inputs.get('sensitive_sites')
-    buffer_multiplier = inputs.get('buffer_multiplier', 4.0)
+    buffer_multiplier = inputs.get('buffer_multiplier', 4.3)
 
     # Validate inputs
     if not building_geojson:
@@ -68,9 +68,12 @@ def execute(inputs):
             sites_gdf.set_crs(epsg=4326, inplace=True)
     else:
         # Use default NYC dataset if available
-        default_sites_path = Path(__file__).parent.parent.parent / 'datasets' / 'NYC_Parks_Zones (2).geojson'
+        default_sites_path = Path(__file__).parent.parent.parent / 'datasets' / 'nyc_dpr_parks_properties.geojson'
         if default_sites_path.exists():
             sites_gdf = gpd.read_file(default_sites_path)
+            # Convert datetime columns to strings (avoids JSON serialization errors)
+            for col in sites_gdf.select_dtypes(include=['datetime64']).columns:
+                sites_gdf[col] = sites_gdf[col].astype(str)
         else:
             # Create empty GeoDataFrame if no sites available
             sites_gdf = gpd.GeoDataFrame(columns=['geometry'], crs='EPSG:4326')
@@ -90,7 +93,7 @@ def execute(inputs):
 ============================================
 
 Building Height: {building_height_ft} feet
-Shadow Radius: {shadow_radius_m:.1f} meters ({building_height_ft * buffer_multiplier:.1f} feet)
+Shadow Radius: {building_height_ft * buffer_multiplier:,.0f} ft ({shadow_radius_m:,.0f} m)
 Buffer Multiplier: {buffer_multiplier}x
 
 Sensitive Sites Within Shadow Radius: {affected_count}
@@ -101,11 +104,18 @@ Tier 2 Analysis Triggered: {'YES' if triggered else 'NO'}
 
     if triggered:
         summary_report += "Recommendation: Proceed with Tier 2 detailed shadow analysis.\n"
-        if affected_count <= 3:
-            summary_report += f"The following {affected_count} site(s) may be affected:\n"
-            for idx, site in affected_sites.iterrows():
-                site_name = site.get('propname', site.get('name', f'Site {idx}'))
-                summary_report += f"  - {site_name}\n"
+        summary_report += f"\nSites within shadow radius:\n"
+        unique_names = []
+        seen = set()
+        for idx, site in affected_sites.iterrows():
+            site_name = site.get('signname', site.get('propname', site.get('name', f'Site {idx}')))
+            if site_name not in seen:
+                seen.add(site_name)
+                unique_names.append(site_name)
+        for name in unique_names[:15]:
+            summary_report += f"  - {name}\n"
+        if len(unique_names) > 15:
+            summary_report += f"  ... and {len(unique_names) - 15} more\n"
     else:
         summary_report += "Recommendation: No further shadow analysis required.\n"
 
@@ -180,10 +190,12 @@ def create_visualization(building_gdf, buffer_gdf, sites_gdf, affected_sites, he
         tooltip=f'Shadow Buffer ({radius_m:.1f}m radius)'
     ).add_to(m)
 
-    # Add all sensitive sites
+    # Add all sensitive sites (name tooltip)
     if not sites_gdf.empty:
+        # Only pass geometry + signname to Folium to keep it lightweight
+        sites_display = sites_gdf[['signname', 'geometry']] if 'signname' in sites_gdf.columns else sites_gdf[['geometry']]
         folium.GeoJson(
-            sites_gdf,
+            sites_display,
             name='Sensitive Sites',
             style_function=lambda x: {
                 'fillColor': '#90ee90',
@@ -191,12 +203,22 @@ def create_visualization(building_gdf, buffer_gdf, sites_gdf, affected_sites, he
                 'weight': 1,
                 'fillOpacity': 0.4
             },
-            tooltip='Sensitive Site'
+            tooltip=folium.GeoJsonTooltip(
+                fields=['signname'] if 'signname' in sites_display.columns else [],
+                aliases=['Park:'] if 'signname' in sites_display.columns else [],
+                sticky=False
+            )
         ).add_to(m)
 
-    # Highlight affected sites
+    # Highlight affected sites with park name tooltip
     if not affected_sites.empty:
         affected_geojson = json.loads(affected_sites.to_json())
+        # Determine which name field is available
+        name_field = next(
+            (f for f in ['signname', 'propname', 'name']
+             if affected_geojson['features'] and f in affected_geojson['features'][0].get('properties', {})),
+            None
+        )
         folium.GeoJson(
             affected_geojson,
             name='Affected Sites',
@@ -206,7 +228,11 @@ def create_visualization(building_gdf, buffer_gdf, sites_gdf, affected_sites, he
                 'weight': 2,
                 'fillOpacity': 0.6
             },
-            tooltip='Potentially Affected Site'
+            tooltip=folium.GeoJsonTooltip(
+                fields=[name_field] if name_field else [],
+                aliases=['Affected:'] if name_field else [],
+                sticky=False
+            ) if name_field else 'Affected Site'
         ).add_to(m)
 
     # Add layer control

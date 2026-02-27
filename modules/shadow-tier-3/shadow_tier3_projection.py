@@ -78,9 +78,11 @@ def execute(inputs):
         if sites_gdf.crs is None:
             sites_gdf.set_crs(epsg=4326, inplace=True)
     else:
-        default_path = Path(__file__).parent.parent.parent / 'datasets' / 'NYC_Parks_Zones (2).geojson'
+        default_path = Path(__file__).parent.parent.parent / 'datasets' / 'nyc_dpr_parks_properties.geojson'
         if default_path.exists():
             sites_gdf = gpd.read_file(str(default_path))
+            for col in sites_gdf.select_dtypes(include=['datetime64']).columns:
+                sites_gdf[col] = sites_gdf[col].astype(str)
         else:
             sites_gdf = gpd.GeoDataFrame({'name': [], 'geometry': []}, crs='EPSG:4326')
 
@@ -146,7 +148,7 @@ def execute(inputs):
 
                     # Check sensitive site intersections
                     for idx, site_row in sites_gdf.iterrows():
-                        site_name = site_row.get('propname', site_row.get('name', f'Site {idx}'))
+                        site_name = site_row.get('signname', site_row.get('propname', site_row.get('name', f'Site {idx}')))
                         if shadow_wgs.intersects(site_row.geometry):
                             if site_name not in sites_hit:
                                 sites_hit[site_name] = []
@@ -405,7 +407,7 @@ def create_visualization(building_gdf, shadow_features, sites_gdf, lat, lon):
     # Sensitive sites
     for idx, row in sites_gdf.iterrows():
         geom = row.geometry
-        name = row.get('propname', row.get('name', f'Site {idx}'))
+        name = row.get('signname', row.get('propname', row.get('name', f'Site {idx}')))
         if geom.geom_type == 'Point':
             folium.CircleMarker(
                 location=[geom.y, geom.x],

@@ -6,16 +6,16 @@
       "geometry": {
         "type": "Polygon",
         "coordinates": [[
-          [-73.9855, 40.7575],
-          [-73.9845, 40.7575],
-          [-73.9845, 40.7565],
-          [-73.9855, 40.7565],
-          [-73.9855, 40.7575]
+          [-73.985758, 40.757247],
+          [-73.984882, 40.756879],
+          [-73.984242, 40.757753],
+          [-73.985118, 40.758121],
+          [-73.985758, 40.757247]
         ]]
       },
       "properties": {
         "name": "Example Tall Tower",
-        "description": "High-rise tower near Bryant Park",
+        "description": "High-rise tower near Bryant Park, Midtown Manhattan — footprint aligned with Manhattan street grid (~29° from true north)",
         "address": "Midtown Manhattan, NYC",
         "suggested_height_ft": 800,
         "footprint_area_sqft": 43560,
