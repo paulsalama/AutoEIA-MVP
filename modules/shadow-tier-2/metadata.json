@@ -1,9 +1,9 @@
 {
-  "name": "shadow_tier2_detailed",
-  "display_name": "Shadow Tier 2 Detailed Analysis",
-  "description": "Detailed shadow path calculations for specified dates and times. Configurable for jurisdiction-specific requirements (point-in-time for NYC, time ranges for Boston). Based on UT_Hackathon prototype.",
+  "name": "shadow_tier2_directional",
+  "display_name": "Shadow Tier 2: Directional Screening",
+  "description": "CEQR Tier 2 directional screen. Eliminates sensitive resources that lie within the triangular zone south of the project site that can never receive shadow (between \u00b1108\u00b0 from true north). Resources remaining in the 'can be shaded' arc proceed to Tier 3 analysis.",
   "category": "shadows",
-  "jurisdiction": ["NYC", "Boston", "generic"],
+  "jurisdiction": ["NYC", "generic"],
   "inputs": {
     "building_geojson": {
       "type": "geojson",
@@ -17,61 +17,40 @@
     },
     "jurisdiction": {
       "type": "enum",
-      "enum": ["NYC", "Boston", "generic"],
-      "description": "Jurisdiction for analysis. Determines analysis methodology and default parameters.",
+      "enum": ["NYC", "generic"],
+      "description": "Jurisdiction for analysis. NYC uses CEQR \u00b1108\u00b0 threshold.",
       "optional": false
     },
-    "analysis_dates": {
-      "type": "array",
-      "description": "List of dates for shadow analysis (ISO format: YYYY-MM-DD). Common dates include summer/winter solstice, spring/fall equinox.",
-      "optional": false,
-      "jurisdiction_defaults": {
-        "NYC": ["2024-03-20", "2024-06-21", "2024-09-22", "2024-12-21"],
-        "Boston": ["2024-03-20", "2024-06-21", "2024-09-22", "2024-12-21"],
-        "generic": ["2024-06-21", "2024-12-21"]
-      }
-    },
-    "time_points": {
-      "type": "array",
-      "description": "Specific times for analysis (HH:MM format). Auto-populated based on jurisdiction.",
-      "optional": true,
-      "jurisdiction_defaults": {
-        "NYC": ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"],
-        "Boston": ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"],
-        "generic": ["09:00", "12:00", "15:00"]
-      }
-    },
-    "latitude": {
-      "type": "number",
-      "description": "Latitude for solar calculations (auto-detected from geometry if not provided)",
-      "optional": true
-    },
-    "longitude": {
-      "type": "number",
-      "description": "Longitude for solar calculations (auto-detected from geometry if not provided)",
+    "sensitive_sites": {
+      "type": "geojson",
+      "description": "Sensitive sites GeoJSON from Tier 1 output or custom dataset. If omitted, uses default NYC dataset.",
       "optional": true
     }
   },
   "outputs": {
-    "shadow_geometries": {
+    "sites_requiring_tier3": {
       "type": "geojson",
-      "description": "Calculated shadow polygons for each time point"
+      "description": "Sensitive sites that could potentially receive shadow and require Tier 3 analysis"
     },
-    "affected_area_sqft": {
-      "type": "number",
-      "description": "Total affected area in square feet"
+    "sites_eliminated": {
+      "type": "geojson",
+      "description": "Sensitive sites ruled out by Tier 2 directional screen"
     },
-    "analysis_summary": {
-      "type": "object",
-      "description": "Summary statistics including max shadow length, times of max impact, etc."
+    "no_shadow_zone": {
+      "type": "geojson",
+      "description": "The triangular zone south of the building that can never receive shadow"
+    },
+    "triggered": {
+      "type": "boolean",
+      "description": "True if any sensitive sites remain after Tier 2 screening (Tier 3 required)"
     },
     "summary_report": {
       "type": "text",
-      "description": "Detailed text report of shadow analysis"
+      "description": "Summary of Tier 2 directional screening results"
     },
     "visualization": {
       "type": "html",
-      "description": "Interactive map showing shadow paths for all analyzed times"
+      "description": "Interactive map showing building, no-shadow zone, and site classifications"
     }
   }
 }

@@ -1,0 +1,57 @@
+{
+  "name": "shadow_tier3_projection",
+  "display_name": "Shadow Tier 3: Shadow Projection",
+  "description": "CEQR Tier 3 shadow screening. Projects accurate 3D shadows using pysolar ephemeris and UTM geometry. Analyzes CEQR representative days (Dec 21, Mar 21, May 6, Jun 21) within the 1.5-hour-after-sunrise to 1.5-hour-before-sunset window. Determines if shadows reach sensitive resources.",
+  "category": "shadows",
+  "jurisdiction": ["NYC", "generic"],
+  "inputs": {
+    "building_geojson": {
+      "type": "geojson",
+      "description": "Building footprint geometry in GeoJSON format",
+      "optional": false
+    },
+    "building_height_ft": {
+      "type": "number",
+      "description": "Building height in feet including all rooftop equipment",
+      "optional": false
+    },
+    "jurisdiction": {
+      "type": "enum",
+      "enum": ["NYC", "generic"],
+      "description": "Jurisdiction determines default analysis dates. NYC uses CEQR representative days.",
+      "optional": false
+    },
+    "sensitive_sites": {
+      "type": "geojson",
+      "description": "Sensitive sites to check for shadow impacts. If omitted, uses default NYC dataset.",
+      "optional": true
+    },
+    "analysis_dates": {
+      "type": "array",
+      "description": "Dates for shadow analysis (YYYY-MM-DD). Defaults to CEQR representative days based on jurisdiction.",
+      "optional": true,
+      "jurisdiction_defaults": {
+        "NYC": ["2024-12-21", "2024-03-21", "2024-05-06", "2024-06-21"],
+        "generic": ["2024-12-21", "2024-03-21", "2024-06-21"]
+      }
+    }
+  },
+  "outputs": {
+    "shadow_polygons": {
+      "type": "geojson",
+      "description": "Shadow polygon for each analysis time snapshot (one feature per datetime)"
+    },
+    "sites_affected": {
+      "type": "object",
+      "description": "List of sensitive sites that receive shadow, with enter/exit times and duration per analysis day"
+    },
+    "summary_report": {
+      "type": "text",
+      "description": "Detailed report of shadow projection results per CEQR methodology"
+    },
+    "visualization": {
+      "type": "html",
+      "description": "Interactive map showing shadow sweeps for each analysis day with sensitive sites"
+    }
+  }
+}
