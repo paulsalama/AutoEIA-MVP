@@ -136,7 +136,7 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           onWorkflowComplete(response.data.results, nodes)
         }
       } else {
-        alert(`Workflow execution failed: ${response.data.error}`)
+        alert(`Workflow execution failed: ${response.data.error || 'Check backend logs'}`)
         if (onWorkflowComplete) {
           onWorkflowComplete(null, nodes)
         }
