@@ -1,0 +1,53 @@
+{
+  "name": "dac_assessment",
+  "display_name": "Disadvantaged Communities (CEQR Ch. 23)",
+  "emoji": "⚖️",
+  "description": "CEQR Technical Manual Chapter 23 — Effects on Disadvantaged Communities. Determines if the project is within or within ½ mile of a NYS DAC under the Climate Act (EJSL, effective Dec 30 2024), screens CEQR technical areas for pollution burden relevance, and generates pre-populated EAF responses.",
+  "category": "environmental_justice",
+  "jurisdiction": ["NYC"],
+  "inputs": {
+    "building_geojson": {
+      "type": "geojson",
+      "description": "Project site boundary or building footprint. The centroid is used as the project location for DAC proximity analysis.",
+      "optional": false
+    },
+    "ceqr_technical_areas": {
+      "type": "array",
+      "description": "CEQR technical areas with potential impacts, e.g. [\"air_quality\", \"noise\", \"hazardous_materials\"]. Used to screen which areas could create a disproportionate pollution burden on a DAC per ECL §8-0109.",
+      "optional": true
+    },
+    "buffer_distance_miles": {
+      "type": "number",
+      "description": "Study area buffer radius in miles. Default 0.5 per CEQR Ch. 23 §320.",
+      "default": 0.5,
+      "optional": true
+    },
+    "project_description": {
+      "type": "text",
+      "description": "Brief description of proposed action for report context.",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "screening_determination": {
+      "type": "object",
+      "description": "Proximity classification (within / proximate / outside DAC), assessment level required, and pre-populated EAF answers"
+    },
+    "dac_tracts_geojson": {
+      "type": "geojson",
+      "description": "DAC census tracts within the study area, with burden and vulnerability indicators as properties"
+    },
+    "eaf_responses": {
+      "type": "object",
+      "description": "Pre-populated Short EAF and Full EAF responses for DAC-related questions (per proposed amendments to 6 NYCRR Part 617)"
+    },
+    "screening_report": {
+      "type": "text",
+      "description": "Narrative screening report for inclusion in EAS or EIS (CEQR Ch. 23 structure)"
+    },
+    "visualization": {
+      "type": "html",
+      "description": "Interactive map showing project location, study area buffer, and DAC census tracts"
+    }
+  }
+}

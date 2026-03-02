@@ -1,0 +1,110 @@
+{
+  "module_id": "dac_assessment",
+  "name": "Disadvantaged Communities Assessment",
+  "version": "1.0.0",
+  "description": "CEQR Technical Manual Chapter 23 — Effects on Disadvantaged Communities. Implements the Environmental Justice Siting Law (EJSL) assessment framework: identifies whether a project is within or proximate to a NYS Disadvantaged Community (DAC), retrieves burden and vulnerability indicators for affected census tracts, and screens for potential disproportionate pollution burden per ECL §8-0109 and §8-0113.",
+  "ceqr_chapter": 23,
+  "ceqr_chapter_title": "Effects on Disadvantaged Communities",
+  "category": "environmental_justice",
+  "tier": "screening",
+  "automatability": "high",
+  "legislative_basis": {
+    "primary": "NYS Climate Leadership and Community Protection Act (2019)",
+    "implementing": "Environmental Justice Siting Law (Chapter 840, 2022; amended Chapter 49, 2023)",
+    "regulations": "Proposed Amendments to 6 NYCRR Part 617",
+    "effective_date": "2024-12-30",
+    "ecl_sections": ["§75-0101", "§75-0111", "§8-0105", "§8-0109", "§8-0113"]
+  },
+  "inputs": [
+    {
+      "name": "project_location",
+      "type": "coordinates",
+      "required": true,
+      "description": "Project site centroid as [latitude, longitude]"
+    },
+    {
+      "name": "project_polygon",
+      "type": "geojson_polygon",
+      "required": false,
+      "description": "Project site boundary as GeoJSON polygon. If provided, buffer is calculated from boundary rather than centroid."
+    },
+    {
+      "name": "project_description",
+      "type": "text",
+      "required": false,
+      "description": "Brief description of proposed action for pollution screening context"
+    },
+    {
+      "name": "ceqr_technical_areas",
+      "type": "array",
+      "required": false,
+      "description": "List of CEQR technical areas with identified potential impacts (e.g., ['air_quality', 'noise', 'hazardous_materials']). Used for pollution burden relevance screening."
+    },
+    {
+      "name": "buffer_distance_miles",
+      "type": "number",
+      "required": false,
+      "default": 0.5,
+      "description": "Study area buffer distance in miles. Default is 0.5 miles per CEQR Ch. 23 Section 320."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "screening_determination",
+      "type": "json",
+      "description": "Binary screening result: is the project within or proximate to a DAC, and does it warrant further assessment?"
+    },
+    {
+      "name": "dac_tracts_geojson",
+      "type": "geojson",
+      "description": "GeoJSON FeatureCollection of DAC census tracts within the study area, with indicator data as properties."
+    },
+    {
+      "name": "study_area_geojson",
+      "type": "geojson",
+      "description": "GeoJSON of the study area buffer polygon."
+    },
+    {
+      "name": "burden_summary",
+      "type": "json",
+      "description": "Aggregated burden and vulnerability indicator summary for affected DAC tracts."
+    },
+    {
+      "name": "eaf_responses",
+      "type": "json",
+      "description": "Pre-populated responses for the DAC-related questions on the Short and Full Environmental Assessment Forms."
+    },
+    {
+      "name": "screening_report",
+      "type": "markdown",
+      "description": "Narrative screening report suitable for inclusion in an EAS or EIS."
+    }
+  ],
+  "data_dependencies": [
+    {
+      "name": "nys_dac_tracts",
+      "source": "NYS Climate Justice Working Group via NYSERDA/DEC",
+      "format": "geojson",
+      "update_frequency": "as_amended",
+      "description": "Census tracts designated as DACs under the Climate Act (45 indicators, ~35% of NYS tracts)"
+    },
+    {
+      "name": "dac_indicators",
+      "source": "NYS CJWG Technical Documentation",
+      "format": "csv",
+      "description": "45 indicator percentile values for each census tract, grouped by factor"
+    },
+    {
+      "name": "nyc_census_tracts",
+      "source": "US Census Bureau / NYC DCP",
+      "format": "geojson",
+      "description": "Census tract boundaries for spatial overlay analysis"
+    }
+  ],
+  "chainable_from": ["project_screening", "ceqr_eligibility"],
+  "chainable_to": ["air_quality", "noise", "hazardous_materials", "water_sewer", "eis_narrative_generator"],
+  "execution_time_estimate_seconds": 5,
+  "requires_llm": false,
+  "requires_api_keys": false,
+  "notes": "This module implements the screening-level assessment. The disproportionate burden comparison (DACAT methodology — comparing subject DAC to statewide/regional non-DAC aggregates) requires additional data from DEC's DACAT tool. At the screening stage, the key determination is proximity and identification of relevant burden indicators, not the full disproportionality calculation."
+}
