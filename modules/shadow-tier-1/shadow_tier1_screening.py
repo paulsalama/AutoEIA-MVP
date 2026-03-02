@@ -161,7 +161,7 @@ def create_visualization(building_gdf, buffer_gdf, sites_gdf, affected_sites, he
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=15,
-        tiles='OpenStreetMap'
+        tiles='CartoDB positron'
     )
 
     # Add building footprint

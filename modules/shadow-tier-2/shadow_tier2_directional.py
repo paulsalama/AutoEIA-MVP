@@ -42,6 +42,20 @@ def execute(inputs):
 
     building_union = unary_union(building_gdf.geometry)
 
+    # Resolve the Tier 1 shadow buffer (for visualization + standalone site filtering)
+    shadow_radius_m = building_height_ft * 0.3048 * 4.3
+    shadow_buffer_input = inputs.get('shadow_buffer')
+    if shadow_buffer_input:
+        if isinstance(shadow_buffer_input, str):
+            shadow_buffer_input = json.loads(shadow_buffer_input)
+        buf_gdf = gpd.GeoDataFrame.from_features(shadow_buffer_input['features'])
+        if buf_gdf.crs is None:
+            buf_gdf.set_crs(epsg=4326, inplace=True)
+    else:
+        building_proj = building_gdf.to_crs(epsg=3857)
+        buf_gdf = gpd.GeoDataFrame(geometry=building_proj.buffer(shadow_radius_m), crs='EPSG:3857').to_crs(epsg=4326)
+    shadow_buffer_geom = unary_union(buf_gdf.geometry)
+
     # Load sensitive sites — prefer passed-in data, then Tier 1 affected_sites, then filter default dataset
     sensitive_sites_input = inputs.get('sensitive_sites') or inputs.get('affected_sites')
 
@@ -52,17 +66,13 @@ def execute(inputs):
         if sites_gdf.crs is None:
             sites_gdf.set_crs(epsg=4326, inplace=True)
     else:
-        # No upstream data — load default dataset and apply Tier 1 buffer to limit scope
+        # No upstream data — load default dataset and filter to buffer extent
         default_path = Path(__file__).parent.parent.parent / 'datasets' / 'nyc_dpr_parks_properties.geojson'
         if default_path.exists():
             sites_gdf = gpd.read_file(str(default_path))
             for col in sites_gdf.select_dtypes(include=['datetime64']).columns:
                 sites_gdf[col] = sites_gdf[col].astype(str)
-            # Apply Tier 1 buffer filter (4.3× height) so we only screen reachable sites
-            shadow_radius_m = building_height_ft * 0.3048 * 4.3
-            building_proj = building_gdf.to_crs(epsg=3857)
-            buf = gpd.GeoDataFrame(geometry=building_proj.buffer(shadow_radius_m), crs='EPSG:3857').to_crs(epsg=4326)
-            sites_gdf = gpd.sjoin(sites_gdf, buf, how='inner', predicate='intersects')
+            sites_gdf = gpd.sjoin(sites_gdf, buf_gdf, how='inner', predicate='intersects')
             if 'index_right' in sites_gdf.columns:
                 sites_gdf = sites_gdf.drop(columns=['index_right'])
         else:
@@ -125,7 +135,7 @@ def execute(inputs):
 
     centroid = building_union.centroid
     viz = create_visualization(
-        building_gdf, no_shadow_polygon,
+        building_gdf, no_shadow_polygon, shadow_buffer_geom,
         eliminated, requiring_tier3,
         centroid.y, centroid.x
     )
@@ -242,10 +252,25 @@ Tier 3 triggered: {'YES' if triggered else 'NO'}
     return report
 
 
-def create_visualization(building_gdf, no_shadow_polygon, eliminated, requiring_tier3, lat, lon):
-    m = folium.Map(location=[lat, lon], zoom_start=15, tiles='OpenStreetMap')
+def create_visualization(building_gdf, no_shadow_polygon, shadow_buffer_geom, eliminated, requiring_tier3, lat, lon):
+    m = folium.Map(location=[lat, lon], zoom_start=15, tiles='CartoDB positron')
 
-    # No-shadow zone (light yellow, hatched feel)
+    # Shadow buffer circle (Tier 1 radius — dashed orange outline, no fill)
+    if shadow_buffer_geom:
+        folium.GeoJson(
+            mapping(shadow_buffer_geom),
+            name='Tier 1 shadow buffer',
+            style_function=lambda x: {
+                'fillColor': '#ff7800',
+                'color': '#ff7800',
+                'weight': 2,
+                'fillOpacity': 0.08,
+                'dashArray': '6 4'
+            },
+            tooltip='Tier 1 shadow buffer (4.3× building height)'
+        ).add_to(m)
+
+    # No-shadow zone (light yellow wedge)
     folium.GeoJson(
         mapping(no_shadow_polygon),
         name='No-shadow zone (±108°)',

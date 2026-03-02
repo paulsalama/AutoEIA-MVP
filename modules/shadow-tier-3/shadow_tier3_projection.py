@@ -170,7 +170,7 @@ def execute(inputs):
     )
 
     viz = create_visualization(
-        building_gdf, all_shadow_features, sites_gdf, lat, lon
+        building_gdf, all_shadow_features, sites_gdf, sites_hit, lat, lon
     )
 
     return {
@@ -357,37 +357,28 @@ Sites receiving shadow: {n_sites}
     return report
 
 
-def create_visualization(building_gdf, shadow_features, sites_gdf, lat, lon):
-    m = folium.Map(location=[lat, lon], zoom_start=15, tiles='OpenStreetMap')
+def create_visualization(building_gdf, shadow_features, sites_gdf, sites_hit, lat, lon):
+    m = folium.Map(location=[lat, lon], zoom_start=15, tiles='CartoDB positron')
 
     # Color palette per analysis date
-    date_colors = {}
     palette = ['#ef4444', '#f97316', '#eab308', '#22c55e',
                '#06b6d4', '#6366f1', '#a855f7', '#ec4899']
     unique_dates = sorted(set(f['properties']['date'] for f in shadow_features))
-    for i, d in enumerate(unique_dates):
-        date_colors[d] = palette[i % len(palette)]
+    date_colors = {d: palette[i % len(palette)] for i, d in enumerate(unique_dates)}
 
     # Shadow polygons (grouped by date, semi-transparent)
     for date in unique_dates:
-        date_features = [f for f in shadow_features if f['properties']['date'] == date]
         color = date_colors[date]
-        geojson_layer = {
-            'type': 'FeatureCollection',
-            'features': date_features
-        }
         folium.GeoJson(
-            geojson_layer,
+            {'type': 'FeatureCollection',
+             'features': [f for f in shadow_features if f['properties']['date'] == date]},
             name=f'Shadows {date}',
             style_function=lambda x, c=color: {
-                'fillColor': c,
-                'color': c,
-                'weight': 0.5,
-                'fillOpacity': 0.2
+                'fillColor': c, 'color': c, 'weight': 0.5, 'fillOpacity': 0.2
             },
             tooltip=folium.GeoJsonTooltip(
                 fields=['time_est', 'solar_altitude_deg', 'shadow_length_m'],
-                aliases=['Time (EST):', 'Solar Altitude:', 'Shadow Length (m):']
+                aliases=['Time (EST):', 'Solar altitude (°):', 'Shadow length (m):']
             )
         ).add_to(m)
 
@@ -396,37 +387,51 @@ def create_visualization(building_gdf, shadow_features, sites_gdf, lat, lon):
         building_gdf,
         name='Proposed Building',
         style_function=lambda x: {
-            'fillColor': '#3b82f6',
-            'color': '#1d4ed8',
-            'weight': 2,
-            'fillOpacity': 0.8
+            'fillColor': '#3b82f6', 'color': '#1d4ed8', 'weight': 2, 'fillOpacity': 0.8
         },
         tooltip='Proposed Building'
     ).add_to(m)
 
-    # Sensitive sites
+    # Split sites into affected vs unaffected
+    affected_names = set(sites_hit.keys())
+    affected_feats = []
+    unaffected_feats = []
+
     for idx, row in sites_gdf.iterrows():
-        geom = row.geometry
         name = row.get('signname', row.get('propname', row.get('name', f'Site {idx}')))
-        if geom.geom_type == 'Point':
-            folium.CircleMarker(
-                location=[geom.y, geom.x],
-                radius=7,
-                color='#7c3aed',
-                fill=True,
-                fill_color='#a78bfa',
-                fill_opacity=0.8,
-                tooltip=name
-            ).add_to(m)
+        feat = {
+            'type': 'Feature',
+            'geometry': mapping(row.geometry),
+            'properties': {'name': name}
+        }
+        if name in affected_names:
+            affected_feats.append(feat)
         else:
-            folium.GeoJson(
-                mapping(geom),
-                style_function=lambda x: {
-                    'fillColor': '#a78bfa', 'color': '#7c3aed',
-                    'weight': 2, 'fillOpacity': 0.4
-                },
-                tooltip=name
-            ).add_to(m)
+            unaffected_feats.append(feat)
+
+    # Unaffected sites (purple, light)
+    if unaffected_feats:
+        folium.GeoJson(
+            {'type': 'FeatureCollection', 'features': unaffected_feats},
+            name='Sensitive sites — no impact',
+            style_function=lambda x: {
+                'fillColor': '#a78bfa', 'color': '#7c3aed',
+                'weight': 1, 'fillOpacity': 0.35
+            },
+            tooltip=folium.GeoJsonTooltip(fields=['name'], aliases=['Site:'], sticky=False)
+        ).add_to(m)
+
+    # Affected sites (orange, bold — shadow confirmed)
+    if affected_feats:
+        folium.GeoJson(
+            {'type': 'FeatureCollection', 'features': affected_feats},
+            name='Sensitive sites — shadow impact',
+            style_function=lambda x: {
+                'fillColor': '#f97316', 'color': '#c2410c',
+                'weight': 2, 'fillOpacity': 0.75
+            },
+            tooltip=folium.GeoJsonTooltip(fields=['name'], aliases=['Affected:'], sticky=False)
+        ).add_to(m)
 
     folium.LayerControl().add_to(m)
     return m._repr_html_()
