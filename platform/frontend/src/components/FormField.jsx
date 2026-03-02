@@ -210,6 +210,32 @@ function FormField({ name, schema, value, onChange, required }) {
         )
       }
 
+      case 'multiselect': {
+        const selected = Array.isArray(value) ? value : []
+        return (
+          <div className="checkbox-group">
+            {schema.options?.map(option => {
+              const label = option.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              return (
+                <label key={option} className="checkbox-item">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(option)}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                        ? [...selected, option]
+                        : selected.filter(o => o !== option)
+                      onChange(next.length ? next : null)
+                    }}
+                  />
+                  <span>{label}</span>
+                </label>
+              )
+            })}
+          </div>
+        )
+      }
+
       case 'text':
         return (
           <textarea

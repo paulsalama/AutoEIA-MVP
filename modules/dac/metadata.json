@@ -12,8 +12,26 @@
       "optional": false
     },
     "ceqr_technical_areas": {
-      "type": "array",
-      "description": "CEQR technical areas with potential impacts, e.g. [\"air_quality\", \"noise\", \"hazardous_materials\"]. Used to screen which areas could create a disproportionate pollution burden on a DAC per ECL §8-0109.",
+      "type": "multiselect",
+      "description": "CEQR technical areas with potential impacts. Used to screen which could create a disproportionate pollution burden on a DAC per ECL §8-0109.",
+      "options": [
+        "air_quality",
+        "noise",
+        "hazardous_materials",
+        "greenhouse_gas_emissions",
+        "transportation",
+        "water_and_sewer_infrastructure",
+        "solid_waste",
+        "energy",
+        "natural_resources",
+        "open_space",
+        "shadows",
+        "historic_and_cultural_resources",
+        "urban_design_and_visual_resources",
+        "socioeconomic_conditions",
+        "community_facilities",
+        "public_health"
+      ],
       "optional": true
     },
     "buffer_distance_miles": {

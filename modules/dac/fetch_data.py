@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_dac_data(data_dir: str = None):
     """Fetch all DAC data and save to local cache."""
-    from .dac_data_loader import DACDataLoader
+    from .dac_assessment import DACDataLoader
 
     loader = DACDataLoader(data_dir=data_dir, offline=False)
 

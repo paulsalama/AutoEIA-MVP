@@ -1,44 +1,244 @@
 """
-DAC Assessment — Core Analysis Engine
-======================================
-Implements the CEQR Chapter 23 screening workflow:
+DAC Assessment — CEQR Technical Manual Chapter 23
+Effects on Disadvantaged Communities
 
-  1. LOCATE: Place project on map, generate ½-mile study area buffer
-  2. IDENTIFY: Find DAC census tracts that intersect the study area
-  3. CLASSIFY: Determine relationship (within DAC, proximate, or outside)
-  4. SCREEN: Assess which CEQR technical areas could create pollution burden
-  5. DETERMINE: Generate screening-level finding for EAF / determination of significance
+Implements the Environmental Justice Siting Law (EJSL) screening workflow:
+  1. LOCATE  — extract project centroid from building_geojson; build ½-mile buffer
+  2. IDENTIFY — find NYS DAC census tracts intersecting the study area
+  3. CLASSIFY — within / proximate / outside
+  4. SCREEN   — assess which CEQR technical areas create pollution burden relevance
+  5. REPORT   — generate EAF responses + narrative screening report
 
-This is a SCREENING module. It does not perform the full DACAT disproportionality
-calculation (which requires comparing subject DAC to statewide/regional non-DAC
-aggregate denominators). That is a Tier 2 analysis handled by burden_analyzer.py
-when full indicator data is available.
+Data: NYS CJWG DAC designations (loaded from datasets/nyc_dac_tracts.geojson,
+fetched from ArcGIS Feature Service on first run via fetch_data.py).
 
-Per CEQR Ch. 23 Section 320:
-  - Study area = ½ mile from project area
-  - If within or within ½ mile of DAC: "Is the project located within, or within
-    ½-mile of, a disadvantaged community? Yes/No"
-  - If >½ mile from DAC: "Could impacts from the project affect a disadvantaged
-    community? Yes/No"
+Legislative basis:
+  - NYS Climate Leadership and Community Protection Act (2019)
+  - Environmental Justice Siting Law (Ch. 840/2022, amended Ch. 49/2023)
+  - Proposed amendments to 6 NYCRR Part 617 (effective Dec 30, 2024)
 """
 
+import csv
 import json
-import math
 import logging
-from dataclasses import dataclass, field, asdict
+import math
+import os
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
-try:
-    from .dac_data_loader import DACDataLoader
-except ImportError:
-    # Loaded directly by AutoEIA module_loader (importlib, not package import)
-    import sys as _sys
-    from pathlib import Path as _Path
-    _sys.path.insert(0, str(_Path(__file__).parent))
-    from dac_data_loader import DACDataLoader
-
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Data constants
+# ---------------------------------------------------------------------------
+
+# ArcGIS Feature Service — authoritative NYS DAC tract boundaries
+DAC_FEATURE_SERVICE_URL = (
+    "https://services6.arcgis.com/DZHaqZm9elBMHCq6/arcgis/rest/services/"
+    "Final_Disadvantaged_Communities_DAC_2023/FeatureServer/0/query"
+)
+
+NYC_BBOX = {
+    "xmin": -74.2591, "ymin": 40.4774,
+    "xmax": -73.7004, "ymax": 40.9176,
+}
+
+DEFAULT_DATA_DIR = Path(__file__).parent.parent.parent / "datasets"
+DAC_TRACTS_FILE = "nyc_dac_tracts.geojson"
+DAC_INDICATORS_FILE = "dac_indicators.csv"
+
+# CJWG 45 indicators grouped by factor
+DAC_INDICATOR_FACTORS = {
+    "health_impacts_burdens": [
+        "asthma_ed_visits", "cardiac_disease_hospitalizations", "copd_ed_visits",
+        "heat_stress_ed_visits", "low_birth_weight", "premature_deaths",
+        "self_reported_health",
+    ],
+    "housing_mobility_communications": [
+        "broadband_access", "group_quarters", "housing_tenure",
+        "linguistic_isolation", "mobile_homes", "overcrowding", "rent_burden",
+    ],
+    "income": [
+        "educational_attainment", "poverty_rate", "unemployment_rate",
+    ],
+    "race_ethnicity": [
+        "pct_bipoc",
+    ],
+    "land_use_historic_discrimination": [
+        "brownfield_cleanup", "historic_redlining", "housing_violations",
+        "industrial_land_use", "landfills_scrap_yards", "remediation_sites",
+        "urban_heat_island", "water_body_impairments",
+    ],
+    "potential_climate_change_risk": [
+        "coastal_flood_risk", "combined_sewer_overflows", "drought_risk",
+        "floodplain_proximity", "heat_vulnerability", "inland_flood_risk",
+        "wildfire_risk",
+    ],
+    "potential_pollution_exposure": [
+        "air_toxics_cancer_risk", "air_toxics_respiratory_risk",
+        "diesel_pm_emissions", "drinking_water_contamination",
+        "hazardous_waste_proximity", "major_facility_proximity",
+        "ozone_concentration", "pm25_concentration", "traffic_proximity",
+        "truck_traffic", "wastewater_discharge", "water_quality_violations",
+    ],
+}
+
+# Flat lookup: indicator_name → factor_name
+_INDICATOR_TO_FACTOR = {
+    ind: factor
+    for factor, indicators in DAC_INDICATOR_FACTORS.items()
+    for ind in indicators
+}
+
+# CEQR technical area → pollution burden relevance
+BURDEN_FACTORS = {
+    "potential_pollution_exposure",
+    "potential_climate_change_risk",
+    "land_use_historic_discrimination",
+}
+VULNERABILITY_FACTORS = {
+    "health_impacts_burdens",
+    "housing_mobility_communications",
+    "income",
+    "race_ethnicity",
+}
+
+
+# ---------------------------------------------------------------------------
+# Data loader
+# ---------------------------------------------------------------------------
+
+class DACDataLoader:
+    """
+    Loads DAC census tract boundaries and indicator data.
+    Checks datasets/ for a local cache first; fetches from ArcGIS on first run.
+    Run `python fetch_data.py` to pre-seed the cache.
+    """
+
+    def __init__(self, data_dir: Optional[str] = None, offline: bool = False):
+        self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
+        self.offline = offline
+        self._dac_tracts = None
+        self._indicators = None
+
+    def load_dac_tracts(self, force_reload: bool = False) -> dict:
+        if self._dac_tracts and not force_reload:
+            return self._dac_tracts
+        local = self.data_dir / DAC_TRACTS_FILE
+        if local.exists():
+            logger.info(f"Loading DAC tracts from {local}")
+            self._dac_tracts = self._load_geojson(local)
+            return self._dac_tracts
+        if self.offline:
+            raise FileNotFoundError(
+                f"DAC tracts not found at {local}. Run fetch_data.py to download."
+            )
+        logger.info("Fetching DAC tracts from ArcGIS Feature Service...")
+        self._dac_tracts = self._fetch_dac_tracts()
+        return self._dac_tracts
+
+    def load_indicators(self, force_reload: bool = False) -> dict:
+        if self._indicators and not force_reload:
+            return self._indicators
+        local = self.data_dir / DAC_INDICATORS_FILE
+        if local.exists():
+            self._indicators = self._load_indicators_csv(local)
+            return self._indicators
+        # Fall back to extracting from GeoJSON properties
+        self._indicators = self._extract_indicators_from_geojson(self.load_dac_tracts())
+        return self._indicators
+
+    def save_local_cache(self, dac_tracts: dict = None):
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        if dac_tracts:
+            path = self.data_dir / DAC_TRACTS_FILE
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(dac_tracts, f)
+            logger.info(f"Saved DAC tracts to {path}")
+
+    @staticmethod
+    def get_indicator_factors() -> dict:
+        return DAC_INDICATOR_FACTORS
+
+    @staticmethod
+    def get_all_indicators() -> list:
+        return list(_INDICATOR_TO_FACTOR.keys())
+
+    @staticmethod
+    def get_indicator_factor(indicator_name: str) -> Optional[str]:
+        return _INDICATOR_TO_FACTOR.get(indicator_name)
+
+    @staticmethod
+    def _load_geojson(path: Path) -> dict:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    @staticmethod
+    def _load_indicators_csv(path: Path) -> dict:
+        indicators = {}
+        with open(path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                geoid = row.get("GEOID", row.get("geoid", ""))
+                if not geoid:
+                    continue
+                tract = {}
+                for col, val in row.items():
+                    if col.lower() in ("geoid", "tract", "county", "name"):
+                        continue
+                    try:
+                        tract[col] = float(val)
+                    except (ValueError, TypeError):
+                        tract[col] = val
+                indicators[geoid] = tract
+        return indicators
+
+    @staticmethod
+    def _extract_indicators_from_geojson(geojson: dict) -> dict:
+        indicators = {}
+        for feature in geojson.get("features", []):
+            props = feature.get("properties", {})
+            geoid = props.get("GEOID", props.get("geoid", ""))
+            if not geoid:
+                continue
+            tract = {}
+            for key, val in props.items():
+                norm = key.lower().replace(" ", "_")
+                if norm in _INDICATOR_TO_FACTOR:
+                    try:
+                        tract[norm] = float(val)
+                    except (ValueError, TypeError):
+                        pass
+            if tract:
+                indicators[geoid] = tract
+        return indicators
+
+    def _fetch_dac_tracts(self) -> dict:
+        try:
+            import requests
+        except ImportError:
+            raise ImportError(
+                "`requests` library required for online fetching. pip install requests"
+            )
+        bbox = NYC_BBOX
+        params = {
+            "where": "DAC_Designation='Yes' OR DAC_designa='Yes'",
+            "geometryType": "esriGeometryEnvelope",
+            "geometry": f"{bbox['xmin']},{bbox['ymin']},{bbox['xmax']},{bbox['ymax']}",
+            "inSR": "4326", "outSR": "4326",
+            "outFields": "*", "f": "geojson",
+            "resultRecordCount": 5000,
+        }
+        resp = requests.get(DAC_FEATURE_SERVICE_URL, params=params, timeout=60)
+        resp.raise_for_status()
+        geojson = resp.json()
+        logger.info(f"Fetched {len(geojson.get('features', []))} DAC tracts")
+        self.save_local_cache(dac_tracts=geojson)
+        return geojson
 
 
 # ---------------------------------------------------------------------------
@@ -46,29 +246,25 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 class ProximityClassification(str, Enum):
-    """Project's spatial relationship to nearest DAC tract."""
     WITHIN = "within_dac"
-    PROXIMATE = "proximate_to_dac"        # within ½ mile but not inside
-    EXTENDED_PROXIMITY = "extended_proximity"  # > ½ mile but potential impact
-    OUTSIDE = "outside_dac"               # no DAC tracts affected
+    PROXIMATE = "proximate_to_dac"
+    EXTENDED_PROXIMITY = "extended_proximity"
+    OUTSIDE = "outside_dac"
 
 class AssessmentLevel(str, Enum):
-    """Required level of DAC analysis."""
-    FULL_ASSESSMENT = "full_assessment"   # within or proximate → EIS-level analysis
-    SCREENING_ONLY = "screening_only"     # extended proximity → narrative only
-    NO_ASSESSMENT = "no_assessment"       # no DACs affected
+    FULL_ASSESSMENT = "full_assessment"
+    SCREENING_ONLY = "screening_only"
+    NO_ASSESSMENT = "no_assessment"
 
 class PollutionRelevance(str, Enum):
-    """Whether a CEQR technical area could contribute to pollution burden."""
-    HIGH = "high"       # direct pollution nexus (air, noise, hazmat)
-    MODERATE = "moderate"  # indirect or cumulative (traffic, water/sewer)
-    LOW = "low"         # minimal pollution pathway (land use, shadows)
+    HIGH = "high"
+    MODERATE = "moderate"
+    LOW = "low"
     NONE = "none"
 
 
 @dataclass
 class DACTractResult:
-    """Analysis results for a single DAC census tract."""
     geoid: str
     tract_name: str = ""
     county_name: str = ""
@@ -81,12 +277,11 @@ class DACTractResult:
     combined_score_percentile: Optional[float] = None
     burden_component_percentile: Optional[float] = None
     vulnerability_component_percentile: Optional[float] = None
-    geometry: Optional[dict] = None  # GeoJSON geometry for mapping
+    geometry: Optional[dict] = None
 
 
 @dataclass
 class ScreeningDetermination:
-    """The module's output determination."""
     project_within_dac: bool
     project_within_half_mile_of_dac: bool
     proximity_classification: str
@@ -95,33 +290,28 @@ class ScreeningDetermination:
     nearest_dac_distance_miles: Optional[float]
     nearest_dac_geoid: Optional[str]
     pollution_relevant_technical_areas: list
-    eaf_question_within_half_mile: str  # "Yes" or "No"
-    eaf_question_could_affect: str       # "Yes" or "No" (for > ½ mile)
+    eaf_question_within_half_mile: str
+    eaf_question_could_affect: str
     rationale: str
 
 
 # ---------------------------------------------------------------------------
-# CEQR technical area → pollution relevance mapping
+# CEQR technical area → pollution relevance
 # ---------------------------------------------------------------------------
 
 CEQR_POLLUTION_RELEVANCE = {
-    # High: Direct air/noise/contamination pathway
     "air_quality": PollutionRelevance.HIGH,
     "noise": PollutionRelevance.HIGH,
     "hazardous_materials": PollutionRelevance.HIGH,
     "stationary_source_air": PollutionRelevance.HIGH,
     "mobile_source_air": PollutionRelevance.HIGH,
     "industrial_source_air": PollutionRelevance.HIGH,
-
-    # Moderate: Indirect or cumulative pollution pathway
     "transportation_traffic": PollutionRelevance.MODERATE,
     "water_sewer": PollutionRelevance.MODERATE,
     "solid_waste": PollutionRelevance.MODERATE,
     "energy": PollutionRelevance.MODERATE,
     "construction": PollutionRelevance.MODERATE,
     "greenhouse_gas": PollutionRelevance.MODERATE,
-
-    # Low: Minimal direct pollution pathway
     "land_use_zoning": PollutionRelevance.LOW,
     "socioeconomic": PollutionRelevance.LOW,
     "community_facilities": PollutionRelevance.LOW,
@@ -136,623 +326,324 @@ CEQR_POLLUTION_RELEVANCE = {
 
 
 # ---------------------------------------------------------------------------
-# Geometry Helpers (pure Python — no GDAL/shapely dependency for MVP)
+# Geometry helpers (pure Python — no Shapely dependency for spatial checks)
 # ---------------------------------------------------------------------------
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Calculate great-circle distance between two points in miles.
-    Uses the Haversine formula.
-    """
-    R = 3958.8  # Earth radius in miles
+def haversine_distance(lat1, lon1, lat2, lon2) -> float:
+    """Great-circle distance in miles."""
+    R = 3958.8
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-
     a = (
-        math.sin(dphi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        math.sin((phi2 - phi1) / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
     )
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def polygon_centroid(coordinates: list) -> tuple:
-    """
-    Approximate centroid of a GeoJSON polygon (first ring only).
-    Returns (lat, lon).
-    """
-    ring = coordinates[0] if coordinates else []
-    if not ring:
-        return (0.0, 0.0)
-    n = len(ring)
-    avg_lon = sum(p[0] for p in ring) / n
-    avg_lat = sum(p[1] for p in ring) / n
-    return (avg_lat, avg_lon)
-
-
-def multipolygon_centroid(coordinates: list) -> tuple:
-    """Approximate centroid of a GeoJSON MultiPolygon."""
-    all_points = []
-    for polygon in coordinates:
-        ring = polygon[0] if polygon else []
-        all_points.extend(ring)
-    if not all_points:
-        return (0.0, 0.0)
-    n = len(all_points)
-    return (sum(p[1] for p in all_points) / n, sum(p[0] for p in all_points) / n)
-
-
 def feature_centroid(feature: dict) -> tuple:
-    """Get approximate centroid (lat, lon) from a GeoJSON feature."""
     geom = feature.get("geometry", {})
-    geom_type = geom.get("type", "")
     coords = geom.get("coordinates", [])
-
-    if geom_type == "Point":
+    gtype = geom.get("type", "")
+    if gtype == "Point":
         return (coords[1], coords[0])
-    elif geom_type == "Polygon":
-        return polygon_centroid(coords)
-    elif geom_type == "MultiPolygon":
-        return multipolygon_centroid(coords)
-    else:
-        return (0.0, 0.0)
-
-
-def point_in_polygon(lat: float, lon: float, polygon_coords: list) -> bool:
-    """
-    Ray-casting point-in-polygon test.
-    polygon_coords is a GeoJSON polygon coordinate array (list of rings).
-    """
-    ring = polygon_coords[0] if polygon_coords else []
-    n = len(ring)
-    inside = False
-    j = n - 1
-    for i in range(n):
-        xi, yi = ring[i][0], ring[i][1]  # lon, lat
-        xj, yj = ring[j][0], ring[j][1]
-        if ((yi > lat) != (yj > lat)) and (
-            lon < (xj - xi) * (lat - yi) / (yj - yi) + xi
-        ):
-            inside = not inside
-        j = i
-    return inside
+    if gtype == "Polygon":
+        ring = coords[0] if coords else []
+        if not ring:
+            return (0.0, 0.0)
+        n = len(ring)
+        return (sum(p[1] for p in ring) / n, sum(p[0] for p in ring) / n)
+    if gtype == "MultiPolygon":
+        pts = [p for poly in coords for p in poly[0]]
+        if not pts:
+            return (0.0, 0.0)
+        n = len(pts)
+        return (sum(p[1] for p in pts) / n, sum(p[0] for p in pts) / n)
+    return (0.0, 0.0)
 
 
 def point_in_feature(lat: float, lon: float, feature: dict) -> bool:
-    """Check if a point is inside a GeoJSON feature's geometry."""
     geom = feature.get("geometry", {})
-    geom_type = geom.get("type", "")
+    gtype = geom.get("type", "")
     coords = geom.get("coordinates", [])
 
-    if geom_type == "Polygon":
-        return point_in_polygon(lat, lon, coords)
-    elif geom_type == "MultiPolygon":
-        return any(point_in_polygon(lat, lon, poly) for poly in coords)
+    def _pip(ring):
+        inside = False
+        j = len(ring) - 1
+        for i, (xi, yi) in enumerate(ring):
+            xj, yj = ring[j]
+            if ((yi > lat) != (yj > lat)) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+                inside = not inside
+            j = i
+        return inside
+
+    if gtype == "Polygon":
+        return _pip(coords[0]) if coords else False
+    if gtype == "MultiPolygon":
+        return any(_pip(poly[0]) for poly in coords if poly)
     return False
 
 
 def create_buffer_circle(lat: float, lon: float, radius_miles: float,
-                         num_points: int = 64) -> dict:
-    """
-    Create a GeoJSON polygon approximating a circle buffer.
-    Returns a GeoJSON Feature with the buffer polygon.
-    """
+                          num_points: int = 64) -> dict:
     coords = []
     for i in range(num_points):
         angle = 2 * math.pi * i / num_points
-        # Approximate lat/lon offset
         dlat = (radius_miles / 69.0) * math.cos(angle)
         dlon = (radius_miles / (69.0 * math.cos(math.radians(lat)))) * math.sin(angle)
         coords.append([lon + dlon, lat + dlat])
-    coords.append(coords[0])  # close the ring
-
+    coords.append(coords[0])
     return {
         "type": "Feature",
-        "properties": {
-            "buffer_radius_miles": radius_miles,
-            "center_lat": lat,
-            "center_lon": lon,
-        },
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": [coords],
-        },
+        "properties": {"buffer_radius_miles": radius_miles, "center_lat": lat, "center_lon": lon},
+        "geometry": {"type": "Polygon", "coordinates": [coords]},
     }
 
 
 # ---------------------------------------------------------------------------
-# Main Assessment Class
+# Core assessment
 # ---------------------------------------------------------------------------
 
 class DACAssessment:
     """
-    Orchestrates the CEQR Chapter 23 Disadvantaged Communities screening.
+    Orchestrates the CEQR Chapter 23 DAC screening.
 
     Usage:
-        assessment = DACAssessment()
-        result = assessment.run(
-            project_location=(40.6782, -73.9442),  # lat, lon
-            ceqr_technical_areas=["air_quality", "noise", "transportation_traffic"],
-            project_description="Mixed-use development with 500 residential units",
+        result = DACAssessment().run(
+            project_location=(40.6782, -73.9442),
+            ceqr_technical_areas=["air_quality", "noise"],
         )
     """
 
     def __init__(self, data_loader: Optional[DACDataLoader] = None):
         self.data_loader = data_loader or DACDataLoader()
-        self._dac_tracts = None
 
-    def run(
-        self,
-        project_location: tuple,
-        project_polygon: Optional[dict] = None,
-        project_description: str = "",
-        ceqr_technical_areas: Optional[list] = None,
-        buffer_distance_miles: float = 0.5,
-    ) -> dict:
-        """
-        Execute the full screening assessment.
-
-        Args:
-            project_location: (latitude, longitude) of project centroid
-            project_polygon: Optional GeoJSON polygon of project boundary
-            project_description: Text description of proposed action
-            ceqr_technical_areas: List of CEQR technical areas with potential impacts
-            buffer_distance_miles: Study area buffer (default 0.5 per Ch. 23 §320)
-
-        Returns:
-            dict with keys:
-                - screening_determination: ScreeningDetermination
-                - dac_tracts: list of DACTractResult
-                - study_area_geojson: GeoJSON Feature of buffer polygon
-                - dac_tracts_geojson: GeoJSON FeatureCollection of affected DAC tracts
-                - eaf_responses: dict of pre-filled EAF answers
-                - pollution_screening: dict of technical area relevance
-        """
+    def run(self, project_location: tuple, project_polygon: Optional[dict] = None,
+            project_description: str = "", ceqr_technical_areas: Optional[list] = None,
+            buffer_distance_miles: float = 0.5) -> dict:
         lat, lon = project_location
         ceqr_areas = ceqr_technical_areas or []
 
-        logger.info(
-            f"Running DAC assessment for location ({lat}, {lon}) "
-            f"with {buffer_distance_miles} mile buffer"
-        )
-
-        # Step 1: Load data
-        dac_geojson = self.data_loader.load_dac_tracts()
-        dac_features = dac_geojson.get("features", [])
+        dac_features = self.data_loader.load_dac_tracts().get("features", [])
         indicators = self.data_loader.load_indicators()
 
-        # Step 2: Create study area buffer
         study_area = create_buffer_circle(lat, lon, buffer_distance_miles)
-
-        # Step 3: Find DAC tracts within study area
-        affected_tracts = self._identify_affected_tracts(
-            lat, lon, dac_features, buffer_distance_miles, indicators
-        )
-
-        # Step 4: Classify proximity
-        proximity = self._classify_proximity(lat, lon, affected_tracts, dac_features)
-
-        # Step 5: Screen pollution relevance
-        pollution_screening = self._screen_pollution_relevance(ceqr_areas)
-
-        # Step 6: Generate determination
+        affected = self._identify_affected_tracts(lat, lon, dac_features,
+                                                   buffer_distance_miles, indicators)
+        proximity = self._classify_proximity(lat, lon, affected)
+        pollution = self._screen_pollution_relevance(ceqr_areas)
         determination = self._generate_determination(
-            lat, lon, proximity, affected_tracts, pollution_screening, buffer_distance_miles
+            lat, lon, proximity, affected, pollution, buffer_distance_miles
         )
-
-        # Step 7: Generate EAF responses
-        eaf_responses = self._generate_eaf_responses(
-            determination, affected_tracts, pollution_screening
-        )
-
-        # Step 8: Build output GeoJSON
-        dac_tracts_geojson = self._build_output_geojson(affected_tracts, dac_features)
+        eaf = self._generate_eaf_responses(determination, affected, pollution)
+        dac_geojson = self._build_output_geojson(affected, dac_features)
 
         return {
             "screening_determination": asdict(determination),
-            "dac_tracts": [asdict(t) for t in affected_tracts],
+            "dac_tracts": [asdict(t) for t in affected],
             "study_area_geojson": study_area,
-            "dac_tracts_geojson": dac_tracts_geojson,
-            "eaf_responses": eaf_responses,
-            "pollution_screening": pollution_screening,
+            "dac_tracts_geojson": dac_geojson,
+            "eaf_responses": eaf,
+            "pollution_screening": pollution,
             "metadata": {
                 "project_location": {"lat": lat, "lon": lon},
                 "buffer_distance_miles": buffer_distance_miles,
                 "ceqr_chapter": 23,
-                "ceqr_chapter_title": "Effects on Disadvantaged Communities",
-                "legislative_basis": "Environmental Justice Siting Law (EJSL)",
                 "data_source": "NYS CJWG DAC designations (March 2023)",
             },
         }
 
-    # ------------------------------------------------------------------
-    # Step 3: Identify Affected Tracts
-    # ------------------------------------------------------------------
-
-    def _identify_affected_tracts(
-        self,
-        project_lat: float,
-        project_lon: float,
-        dac_features: list,
-        buffer_miles: float,
-        indicators: dict,
-    ) -> list:
-        """
-        Find all DAC tracts within the buffer distance of the project.
-        Returns list of DACTractResult ordered by distance.
-        """
+    def _identify_affected_tracts(self, project_lat, project_lon, dac_features,
+                                   buffer_miles, indicators) -> list:
         affected = []
-
         for feature in dac_features:
             props = feature.get("properties", {})
             geoid = props.get("GEOID", props.get("geoid", props.get("GEOID20", "")))
-
             if not geoid:
                 continue
-
-            # Calculate distance from project to tract centroid
             tract_lat, tract_lon = feature_centroid(feature)
-            distance = haversine_distance(project_lat, project_lon, tract_lat, tract_lon)
-
-            # Check if within buffer (use generous 1.5x buffer to catch edge cases —
-            # precise intersection requires real geometry library)
-            if distance > buffer_miles * 1.5:
+            dist = haversine_distance(project_lat, project_lon, tract_lat, tract_lon)
+            if dist > buffer_miles * 1.5:   # generous pre-filter; exact check below
                 continue
-
-            # Check if project point is actually inside this tract
             is_within = point_in_feature(project_lat, project_lon, feature)
-
-            # Build result
             tract_indicators = indicators.get(geoid, {})
-            top_burden, top_vulnerability = self._rank_indicators(tract_indicators)
-
-            result = DACTractResult(
+            burden, vuln = self._rank_indicators(tract_indicators)
+            affected.append(DACTractResult(
                 geoid=geoid,
                 tract_name=props.get("NAME", props.get("name", "")),
                 county_name=props.get("COUNTY", props.get("county", "")),
-                distance_miles=round(distance, 3),
+                distance_miles=round(dist, 3),
                 is_within_project=is_within,
-                is_within_buffer=distance <= buffer_miles or is_within,
+                is_within_buffer=dist <= buffer_miles or is_within,
                 indicator_count=len(tract_indicators),
-                top_burden_indicators=top_burden[:5],
-                top_vulnerability_indicators=top_vulnerability[:5],
+                top_burden_indicators=burden[:5],
+                top_vulnerability_indicators=vuln[:5],
                 combined_score_percentile=tract_indicators.get("combined_score"),
                 burden_component_percentile=tract_indicators.get("burden_component"),
-                vulnerability_component_percentile=tract_indicators.get(
-                    "vulnerability_component"
-                ),
+                vulnerability_component_percentile=tract_indicators.get("vulnerability_component"),
                 geometry=feature.get("geometry"),
-            )
-            affected.append(result)
-
-        # Sort by distance
+            ))
         affected.sort(key=lambda t: t.distance_miles)
         return affected
 
     @staticmethod
     def _rank_indicators(tract_indicators: dict) -> tuple:
-        """
-        Rank indicators by percentile value, split into burden vs vulnerability.
-        Returns (top_burden, top_vulnerability) as lists of (name, percentile) tuples.
-        """
-        burden_factors = {
-            "potential_pollution_exposure",
-            "potential_climate_change_risk",
-            "land_use_historic_discrimination",
-        }
-        vulnerability_factors = {
-            "health_impacts_burdens",
-            "housing_mobility_communications",
-            "income",
-            "race_ethnicity",
-        }
-
-        burden_scores = []
-        vulnerability_scores = []
-
-        for indicator, value in tract_indicators.items():
-            if not isinstance(value, (int, float)):
+        burden, vuln = [], []
+        for name, val in tract_indicators.items():
+            if not isinstance(val, (int, float)):
                 continue
-            factor = DACDataLoader.get_indicator_factor(indicator)
-            if factor in burden_factors:
-                burden_scores.append((indicator, value))
-            elif factor in vulnerability_factors:
-                vulnerability_scores.append((indicator, value))
+            factor = _INDICATOR_TO_FACTOR.get(name)
+            if factor in BURDEN_FACTORS:
+                burden.append((name, val))
+            elif factor in VULNERABILITY_FACTORS:
+                vuln.append((name, val))
+        burden.sort(key=lambda x: x[1], reverse=True)
+        vuln.sort(key=lambda x: x[1], reverse=True)
+        return burden, vuln
 
-        burden_scores.sort(key=lambda x: x[1], reverse=True)
-        vulnerability_scores.sort(key=lambda x: x[1], reverse=True)
-
-        return burden_scores, vulnerability_scores
-
-    # ------------------------------------------------------------------
-    # Step 4: Classify Proximity
-    # ------------------------------------------------------------------
-
-    def _classify_proximity(
-        self,
-        project_lat: float,
-        project_lon: float,
-        affected_tracts: list,
-        all_dac_features: list,
-    ) -> ProximityClassification:
-        """
-        Determine the project's spatial relationship to DAC tracts.
-        """
-        # Check if project is physically inside any DAC tract
-        for tract in affected_tracts:
-            if tract.is_within_project:
+    def _classify_proximity(self, project_lat, project_lon, affected) -> ProximityClassification:
+        for t in affected:
+            if t.is_within_project:
                 return ProximityClassification.WITHIN
-
-        # Check if any DAC tracts are within the buffer
-        tracts_in_buffer = [t for t in affected_tracts if t.is_within_buffer]
-        if tracts_in_buffer:
+        if any(t.is_within_buffer for t in affected):
             return ProximityClassification.PROXIMATE
-
-        # Check extended proximity (up to 1 mile for large projects)
-        tracts_nearby = [t for t in affected_tracts if t.distance_miles <= 1.0]
-        if tracts_nearby:
+        if any(t.distance_miles <= 1.0 for t in affected):
             return ProximityClassification.EXTENDED_PROXIMITY
-
         return ProximityClassification.OUTSIDE
 
-    # ------------------------------------------------------------------
-    # Step 5: Screen Pollution Relevance
-    # ------------------------------------------------------------------
-
     def _screen_pollution_relevance(self, ceqr_areas: list) -> dict:
-        """
-        For each CEQR technical area with potential impacts, classify
-        its relevance to pollution burden in DACs.
-        """
         screening = {}
         for area in ceqr_areas:
-            normalized = area.lower().replace(" ", "_").replace("-", "_")
-            relevance = CEQR_POLLUTION_RELEVANCE.get(
-                normalized, PollutionRelevance.LOW
-            )
+            norm = area.lower().replace(" ", "_").replace("-", "_")
+            rel = CEQR_POLLUTION_RELEVANCE.get(norm, PollutionRelevance.LOW)
             screening[area] = {
-                "relevance": relevance.value,
-                "could_contribute_to_pollution_burden": relevance in (
-                    PollutionRelevance.HIGH,
-                    PollutionRelevance.MODERATE,
+                "relevance": rel.value,
+                "could_contribute_to_pollution_burden": rel in (
+                    PollutionRelevance.HIGH, PollutionRelevance.MODERATE,
                 ),
             }
-
-        # Summary
-        high_relevance = [
-            a for a, s in screening.items() if s["relevance"] == "high"
-        ]
-        moderate_relevance = [
-            a for a, s in screening.items() if s["relevance"] == "moderate"
-        ]
-
+        high = [a for a, s in screening.items() if s["relevance"] == "high"]
+        mod = [a for a, s in screening.items() if s["relevance"] == "moderate"]
         screening["_summary"] = {
-            "high_relevance_areas": high_relevance,
-            "moderate_relevance_areas": moderate_relevance,
-            "any_pollution_relevant": len(high_relevance) + len(moderate_relevance) > 0,
-            "pollution_concern_level": (
-                "high" if high_relevance
-                else "moderate" if moderate_relevance
-                else "low"
-            ),
+            "high_relevance_areas": high,
+            "moderate_relevance_areas": mod,
+            "any_pollution_relevant": len(high) + len(mod) > 0,
+            "pollution_concern_level": "high" if high else "moderate" if mod else "low",
         }
-
         return screening
 
-    # ------------------------------------------------------------------
-    # Step 6: Generate Determination
-    # ------------------------------------------------------------------
-
-    def _generate_determination(
-        self,
-        lat: float,
-        lon: float,
-        proximity: ProximityClassification,
-        affected_tracts: list,
-        pollution_screening: dict,
-        buffer_miles: float,
-    ) -> ScreeningDetermination:
-        """Generate the screening-level determination."""
-
+    def _generate_determination(self, lat, lon, proximity, affected,
+                                 pollution, buffer_miles) -> ScreeningDetermination:
         within = proximity == ProximityClassification.WITHIN
-        proximate = proximity in (
-            ProximityClassification.WITHIN,
-            ProximityClassification.PROXIMATE,
-        )
-        tracts_in_buffer = [t for t in affected_tracts if t.is_within_buffer]
-        nearest = affected_tracts[0] if affected_tracts else None
+        proximate = proximity in (ProximityClassification.WITHIN,
+                                   ProximityClassification.PROXIMATE)
+        in_buffer = [t for t in affected if t.is_within_buffer]
+        nearest = affected[0] if affected else None
 
-        # Assessment level
         if proximity == ProximityClassification.OUTSIDE:
-            assessment_level = AssessmentLevel.NO_ASSESSMENT
+            level = AssessmentLevel.NO_ASSESSMENT
         elif proximity == ProximityClassification.EXTENDED_PROXIMITY:
-            assessment_level = AssessmentLevel.SCREENING_ONLY
+            level = AssessmentLevel.SCREENING_ONLY
         else:
-            assessment_level = AssessmentLevel.FULL_ASSESSMENT
+            level = AssessmentLevel.FULL_ASSESSMENT
 
-        # Pollution-relevant areas
-        summary = pollution_screening.get("_summary", {})
-        pollution_areas = (
-            summary.get("high_relevance_areas", [])
-            + summary.get("moderate_relevance_areas", [])
-        )
-
-        # Rationale
-        rationale = self._build_rationale(
-            proximity, tracts_in_buffer, nearest, pollution_areas, buffer_miles
-        )
+        summary = pollution.get("_summary", {})
+        pollution_areas = (summary.get("high_relevance_areas", []) +
+                           summary.get("moderate_relevance_areas", []))
 
         return ScreeningDetermination(
             project_within_dac=within,
             project_within_half_mile_of_dac=proximate,
             proximity_classification=proximity.value,
-            assessment_level_required=assessment_level.value,
-            dac_tracts_in_study_area=len(tracts_in_buffer),
-            nearest_dac_distance_miles=(
-                round(nearest.distance_miles, 3) if nearest else None
-            ),
+            assessment_level_required=level.value,
+            dac_tracts_in_study_area=len(in_buffer),
+            nearest_dac_distance_miles=round(nearest.distance_miles, 3) if nearest else None,
             nearest_dac_geoid=nearest.geoid if nearest else None,
             pollution_relevant_technical_areas=pollution_areas,
             eaf_question_within_half_mile="Yes" if proximate else "No",
             eaf_question_could_affect=(
-                "Yes"
-                if proximity == ProximityClassification.EXTENDED_PROXIMITY
-                else "No"
+                "Yes" if proximity == ProximityClassification.EXTENDED_PROXIMITY else "No"
             ),
-            rationale=rationale,
+            rationale=self._build_rationale(proximity, in_buffer, nearest,
+                                             pollution_areas, buffer_miles),
         )
 
-    def _build_rationale(
-        self,
-        proximity: ProximityClassification,
-        tracts_in_buffer: list,
-        nearest: Optional[DACTractResult],
-        pollution_areas: list,
-        buffer_miles: float,
-    ) -> str:
-        """Build human-readable rationale for the determination."""
-
+    @staticmethod
+    def _build_rationale(proximity, tracts_in_buffer, nearest, pollution_areas,
+                          buffer_miles) -> str:
         if proximity == ProximityClassification.OUTSIDE:
-            dist_note = ""
+            note = ""
             if nearest:
-                dist_note = (
-                    f" The nearest DAC census tract ({nearest.geoid}) is "
-                    f"approximately {nearest.distance_miles:.2f} miles from the "
-                    f"project site."
-                )
-            return (
-                f"The project is not located within or within {buffer_miles} miles of "
-                f"a disadvantaged community as designated under the NYS Climate "
-                f"Leadership and Community Protection Act.{dist_note} "
-                f"No further DAC assessment is required under CEQR Chapter 23."
-            )
+                note = (f" The nearest DAC census tract ({nearest.geoid}) is "
+                        f"approximately {nearest.distance_miles:.2f} miles away.")
+            return (f"The project is not located within or within {buffer_miles} miles of "
+                    f"a disadvantaged community under the NYS Climate Act.{note} "
+                    f"No further DAC assessment is required under CEQR Chapter 23.")
 
-        tract_count = len(tracts_in_buffer)
+        count = len(tracts_in_buffer)
         geoids = ", ".join(t.geoid for t in tracts_in_buffer[:5])
-        if tract_count > 5:
-            geoids += f" (and {tract_count - 5} additional)"
+        if count > 5:
+            geoids += f" (and {count - 5} additional)"
 
-        if proximity == ProximityClassification.WITHIN:
-            location_phrase = "located within"
-        elif proximity == ProximityClassification.PROXIMATE:
-            location_phrase = f"located within {buffer_miles} miles of"
-        else:
-            location_phrase = "in extended proximity to"
+        loc = {"within_dac": "located within",
+               "proximate_to_dac": f"located within {buffer_miles} miles of",
+               "extended_proximity": "in extended proximity to"}.get(proximity.value, "near")
 
-        rationale = (
-            f"The project is {location_phrase} {tract_count} disadvantaged "
-            f"community census tract(s) ({geoids}) as designated under the NYS "
-            f"Climate Leadership and Community Protection Act (CJWG, March 2023)."
-        )
+        rationale = (f"The project is {loc} {count} disadvantaged community census "
+                     f"tract(s) ({geoids}) under the NYS Climate Act (CJWG, March 2023).")
 
         if pollution_areas:
-            areas_str = ", ".join(pollution_areas)
-            rationale += (
-                f" The proposed action has potential impacts in the following "
-                f"pollution-relevant CEQR technical areas: {areas_str}. "
-                f"Per ECL §8-0109 and §8-0113, the lead agency must evaluate "
-                f"whether the proposed action may cause or increase a "
-                f"disproportionate pollution burden on the affected DAC(s)."
-            )
+            rationale += (f" Potential impacts in: {', '.join(pollution_areas)}. "
+                          f"Per ECL §8-0109 and §8-0113, the lead agency must evaluate "
+                          f"whether the action may cause or increase a disproportionate "
+                          f"pollution burden on the affected DAC(s).")
         else:
-            rationale += (
-                " No pollution-relevant CEQR technical areas have been identified "
-                "at this screening stage. If subsequent analysis identifies "
-                "potential air quality, noise, hazardous materials, or other "
-                "pollution-related impacts, the DAC assessment should be revisited."
-            )
-
+            rationale += (" No pollution-relevant CEQR technical areas identified. "
+                          "Revisit if air quality, noise, or hazmat impacts are found.")
         return rationale
 
-    # ------------------------------------------------------------------
-    # Step 7: Generate EAF Responses
-    # ------------------------------------------------------------------
-
-    def _generate_eaf_responses(
-        self,
-        determination: ScreeningDetermination,
-        affected_tracts: list,
-        pollution_screening: dict,
-    ) -> dict:
-        """
-        Pre-populate answers for the DAC-related questions added to the
-        Short and Full Environmental Assessment Forms under the proposed
-        amendments to 6 NYCRR Part 617.
-        """
+    def _generate_eaf_responses(self, determination, affected, pollution) -> dict:
         proximate = determination.project_within_half_mile_of_dac
-        tracts_in_buffer = [t for t in affected_tracts if t.is_within_buffer]
-        summary = pollution_screening.get("_summary", {})
-
+        in_buffer = [t for t in affected if t.is_within_buffer]
+        summary = pollution.get("_summary", {})
         return {
             "short_eaf": {
-                "project_within_or_half_mile_of_dac": (
-                    "Yes" if proximate else "No"
-                ),
-                "could_impacts_affect_dac": (
-                    "Yes"
-                    if determination.eaf_question_could_affect == "Yes"
-                    else "No"
-                ),
+                "project_within_or_half_mile_of_dac": "Yes" if proximate else "No",
+                "could_impacts_affect_dac": determination.eaf_question_could_affect,
             },
             "full_eaf": {
-                "project_within_or_half_mile_of_dac": (
-                    "Yes" if proximate else "No"
-                ),
-                "dac_census_tracts_affected": [
-                    t.geoid for t in tracts_in_buffer
-                ],
-                "number_of_dac_tracts_in_study_area": len(tracts_in_buffer),
-                "could_impacts_affect_dac": (
-                    "Yes"
-                    if determination.eaf_question_could_affect == "Yes"
-                    else "No"
-                ),
+                "project_within_or_half_mile_of_dac": "Yes" if proximate else "No",
+                "dac_census_tracts_affected": [t.geoid for t in in_buffer],
+                "number_of_dac_tracts_in_study_area": len(in_buffer),
+                "could_impacts_affect_dac": determination.eaf_question_could_affect,
                 "potential_pollution_types": (
-                    summary.get("high_relevance_areas", [])
-                    + summary.get("moderate_relevance_areas", [])
+                    summary.get("high_relevance_areas", []) +
+                    summary.get("moderate_relevance_areas", [])
                 ),
                 "pollution_burden_assessment_required": (
-                    determination.assessment_level_required == "full_assessment"
-                    and summary.get("any_pollution_relevant", False)
+                    determination.assessment_level_required == "full_assessment" and
+                    summary.get("any_pollution_relevant", False)
                 ),
             },
             "notes": (
-                "These responses are auto-generated based on spatial analysis "
-                "of the project location against NYS CJWG DAC designations "
-                "(March 2023) and the CEQR Technical Manual Chapter 23 methodology. "
-                "The lead agency should verify these responses and may adjust "
-                "based on project-specific circumstances."
+                "Auto-generated from NYS CJWG DAC designations (March 2023) and "
+                "CEQR Technical Manual Chapter 23. Verify before submission."
             ),
         }
 
-    # ------------------------------------------------------------------
-    # Step 8: Build Output GeoJSON
-    # ------------------------------------------------------------------
-
-    def _build_output_geojson(
-        self, affected_tracts: list, dac_features: list
-    ) -> dict:
-        """
-        Build a GeoJSON FeatureCollection of affected DAC tracts
-        with assessment metadata in properties.
-        """
+    def _build_output_geojson(self, affected, dac_features) -> dict:
         features = []
-        for tract in affected_tracts:
+        for tract in affected:
             if not tract.is_within_buffer:
                 continue
-
-            # Find the original feature for full geometry
             geometry = tract.geometry
             if not geometry:
-                # Try to find in original features
                 for f in dac_features:
                     props = f.get("properties", {})
-                    geoid = props.get("GEOID", props.get("geoid", props.get("GEOID20", "")))
-                    if geoid == tract.geoid:
+                    gid = props.get("GEOID", props.get("geoid", props.get("GEOID20", "")))
+                    if gid == tract.geoid:
                         geometry = f.get("geometry")
                         break
-
-            feature = {
+            features.append({
                 "type": "Feature",
                 "properties": {
                     "geoid": tract.geoid,
@@ -761,43 +652,250 @@ class DACAssessment:
                     "distance_miles": tract.distance_miles,
                     "is_project_within": tract.is_within_project,
                     "top_burden_indicators": [
-                        {"indicator": name, "percentile": pct}
-                        for name, pct in tract.top_burden_indicators
+                        {"indicator": n, "percentile": p}
+                        for n, p in tract.top_burden_indicators
                     ],
                     "top_vulnerability_indicators": [
-                        {"indicator": name, "percentile": pct}
-                        for name, pct in tract.top_vulnerability_indicators
+                        {"indicator": n, "percentile": p}
+                        for n, p in tract.top_vulnerability_indicators
                     ],
                 },
                 "geometry": geometry,
-            }
-            features.append(feature)
+            })
+        return {"type": "FeatureCollection", "features": features}
 
-        return {
-            "type": "FeatureCollection",
-            "features": features,
+
+# ---------------------------------------------------------------------------
+# Report generator
+# ---------------------------------------------------------------------------
+
+class DACReportGenerator:
+    """Generates CEQR Ch. 23 narrative screening reports."""
+
+    def generate_screening_report(self, assessment_result: dict,
+                                   project_name: str = "Proposed Action",
+                                   applicant_name: str = "",
+                                   ceqr_number: str = "",
+                                   include_methodology: bool = True) -> str:
+        det = assessment_result["screening_determination"]
+        tracts = assessment_result["dac_tracts"]
+        pollution = assessment_result["pollution_screening"]
+        meta = assessment_result.get("metadata", {})
+        eaf = assessment_result.get("eaf_responses", {})
+
+        sections = [
+            self._header(project_name, ceqr_number, applicant_name),
+            self._introduction(det),
+        ]
+        if include_methodology:
+            sections.append(self._regulatory_context())
+        sections += [
+            self._study_area(meta, det),
+            self._dac_identification(det, tracts),
+        ]
+        if det["dac_tracts_in_study_area"] > 0:
+            sections += [
+                self._burden_profile(tracts),
+                self._pollution_screening(pollution),
+            ]
+        sections += [
+            self._determination(det),
+            self._eaf_responses(eaf),
+        ]
+        return "\n\n".join(sections)
+
+    def generate_summary(self, assessment_result: dict) -> str:
+        det = assessment_result["screening_determination"]
+        if det["proximity_classification"] == "outside_dac":
+            return ("The proposed action is not located within or within ½ mile of a "
+                    "disadvantaged community. No further assessment is warranted.")
+        n = det["dac_tracts_in_study_area"]
+        cls = det["proximity_classification"].replace("_", " ")
+        summary = f"The proposed action is {cls} to {n} disadvantaged community census tract(s)."
+        if det["pollution_relevant_technical_areas"]:
+            areas = ", ".join(det["pollution_relevant_technical_areas"])
+            summary += (f" Potential pollution-relevant impacts in: {areas}. "
+                        f"Further assessment per CEQR Chapter 23 and EJSL is recommended.")
+        return summary
+
+    @staticmethod
+    def _header(project_name, ceqr_number, applicant_name) -> str:
+        lines = [
+            "# Effects on Disadvantaged Communities — Screening Assessment",
+            f"## {project_name}",
+        ]
+        if ceqr_number:
+            lines.append(f"**CEQR Number:** {ceqr_number}")
+        if applicant_name:
+            lines.append(f"**Applicant:** {applicant_name}")
+        lines.append(f"**Assessment Date:** {datetime.now().strftime('%B %d, %Y')}")
+        lines.append("**CEQR Technical Manual Chapter:** 23 — Effects on Disadvantaged "
+                     "Communities (December 2025 Edition)")
+        return "\n\n".join(lines)
+
+    @staticmethod
+    def _introduction(det) -> str:
+        cls = det["proximity_classification"]
+        phrases = {
+            "outside_dac": "the proposed action is **not located within or proximate to** a disadvantaged community",
+            "within_dac": "the proposed action is **located within** a designated disadvantaged community",
+            "proximate_to_dac": "the proposed action is **located within ½ mile of** a designated disadvantaged community",
         }
+        finding = phrases.get(cls, "the proposed action is in **extended proximity** to a designated disadvantaged community")
+        level = det["assessment_level_required"].replace("_", " ").title()
+        return (
+            "## 1. Introduction\n\n"
+            "This assessment evaluates the potential effects of the proposed action "
+            "on disadvantaged communities (DACs) as required by the Environmental "
+            "Justice Siting Law (EJSL) and CEQR Technical Manual Chapter 23 "
+            "(December 2025 Edition). The EJSL, effective December 30, 2024, requires "
+            "lead agencies to consider whether an action may cause or increase a "
+            "disproportionate pollution burden on a DAC as part of the SEQRA process.\n\n"
+            f"Based on this screening, {finding}. "
+            f"**Assessment level required: {level}.**"
+        )
+
+    @staticmethod
+    def _regulatory_context() -> str:
+        return (
+            "## 2. Regulatory Context\n\n"
+            "Under the NYS Climate Leadership and Community Protection Act (2019), "
+            "the Climate Justice Working Group (CJWG) identified approximately 35% of "
+            "NYS census tracts as disadvantaged communities using 45 indicators spanning "
+            "environmental burdens, climate risks, health vulnerabilities, and "
+            "socioeconomic characteristics.\n\n"
+            "The Environmental Justice Siting Law (Ch. 840/2022, amended Ch. 49/2023) "
+            "amends SEQRA (ECL Article 8) to require lead agencies to evaluate whether a "
+            "proposed action may cause or increase a disproportionate pollution burden on "
+            "a DAC — in both the determination of significance (ECL §8-0109) and in the "
+            "preparation of an EIS (ECL §8-0113). DEC's proposed amendments to "
+            "6 NYCRR Part 617 implement these requirements through updated EAF questions."
+        )
+
+    @staticmethod
+    def _study_area(meta, det) -> str:
+        loc = meta.get("project_location", {})
+        buf = meta.get("buffer_distance_miles", 0.5)
+        return (
+            f"## 3. Study Area Definition\n\n"
+            f"Per CEQR Ch. 23 §320, the study area is defined as the area within "
+            f"**{buf} miles** of the project site.\n\n"
+            f"**Project Location:** {loc.get('lat', 'N/A')}°N, {abs(loc.get('lon', 0))}°W\n\n"
+            f"**Study Area Radius:** {buf} miles\n\n"
+            f"**DAC Tracts in Study Area:** {det['dac_tracts_in_study_area']}"
+        )
+
+    @staticmethod
+    def _dac_identification(det, tracts) -> str:
+        lines = ["## 4. DAC Identification Results\n"]
+        if det["dac_tracts_in_study_area"] == 0:
+            lines.append("No DAC census tracts were identified within the study area.")
+            if det.get("nearest_dac_geoid"):
+                lines.append(f"\nNearest DAC tract ({det['nearest_dac_geoid']}) is "
+                              f"~{det['nearest_dac_distance_miles']:.2f} miles away.")
+            return "\n".join(lines)
+        lines.append(f"The following {det['dac_tracts_in_study_area']} DAC tract(s) "
+                     f"were identified:\n")
+        lines.append("| Census Tract (GEOID) | Distance (mi) | Relationship |")
+        lines.append("|---|---|---|")
+        for t in tracts:
+            if not t.get("is_within_buffer"):
+                continue
+            rel = "Project within tract" if t.get("is_within_project") else "Within study area"
+            lines.append(f"| {t['geoid']} | {t['distance_miles']:.3f} | {rel} |")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _burden_profile(tracts) -> str:
+        lines = ["## 5. Existing Burden and Vulnerability Profile\n"]
+        for t in tracts:
+            if not t.get("is_within_buffer"):
+                continue
+            lines.append(f"### Census Tract {t['geoid']}\n")
+            burden = t.get("top_burden_indicators", [])
+            vuln = t.get("top_vulnerability_indicators", [])
+            if burden:
+                lines.append("**Elevated Environmental Burden Indicators:**\n")
+                for name, pct in burden[:5]:
+                    lines.append(f"- {name.replace('_', ' ').title()}: {pct:.0f}th percentile statewide")
+                lines.append("")
+            if vuln:
+                lines.append("**Elevated Population Vulnerability Indicators:**\n")
+                for name, pct in vuln[:5]:
+                    lines.append(f"- {name.replace('_', ' ').title()}: {pct:.0f}th percentile statewide")
+                lines.append("")
+            if not burden and not vuln:
+                lines.append("*Detailed indicator data not available. See CJWG DAC map.*\n")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _pollution_screening(pollution) -> str:
+        lines = ["## 6. Pollution Burden Relevance Screening\n"]
+        summary = pollution.get("_summary", {})
+        high = summary.get("high_relevance_areas", [])
+        mod = summary.get("moderate_relevance_areas", [])
+        if not high and not mod:
+            lines.append("No CEQR technical areas with potential pollution relevance "
+                         "identified at this stage. Revisit if air quality, noise, or "
+                         "hazardous materials impacts are identified.")
+            return "\n".join(lines)
+        lines.append("The following CEQR technical areas may contribute to pollution "
+                     "burden in the affected DAC(s):\n")
+        if high:
+            lines.append("**High Pollution Relevance:**\n")
+            for a in high:
+                lines.append(f"- {a.replace('_', ' ').title()}")
+            lines.append("")
+        if mod:
+            lines.append("**Moderate Pollution Relevance:**\n")
+            for a in mod:
+                lines.append(f"- {a.replace('_', ' ').title()}")
+            lines.append("")
+        lines.append("Per ECL §8-0109 and §8-0113, the lead agency must evaluate "
+                     "whether these impacts may cause or increase a disproportionate "
+                     "pollution burden on the affected DAC(s).")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _determination(det) -> str:
+        lines = [
+            "## 7. Screening Determination\n",
+            f"**EAF — Within ½ mile of DAC:** {det['eaf_question_within_half_mile']}\n",
+        ]
+        if det["eaf_question_could_affect"] == "Yes":
+            lines.append(f"**EAF — Could impacts affect DAC:** {det['eaf_question_could_affect']}\n")
+        lines.append(f"**Assessment Level Required:** "
+                     f"{det['assessment_level_required'].replace('_', ' ').title()}\n")
+        lines.append(f"**Rationale:**\n\n{det['rationale']}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _eaf_responses(eaf) -> str:
+        lines = [
+            "## 8. Environmental Assessment Form Responses\n",
+            "Pre-populated responses for updated EAF DAC questions "
+            "(per proposed amendments to 6 NYCRR Part 617):\n",
+            "### Short EAF\n",
+        ]
+        for k, v in eaf.get("short_eaf", {}).items():
+            lines.append(f"- **{k.replace('_', ' ').title()}:** {v}")
+        lines.append("\n### Full EAF\n")
+        for k, v in eaf.get("full_eaf", {}).items():
+            if isinstance(v, list):
+                v = ", ".join(str(x) for x in v) if v else "None"
+            lines.append(f"- **{k.replace('_', ' ').title()}:** {v}")
+        if eaf.get("notes"):
+            lines.append(f"\n*{eaf['notes']}*")
+        return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
 # AutoEIA Platform Integration
 # ---------------------------------------------------------------------------
 
-def _load_report_generator():
-    """Import DACReportGenerator — handles both package and direct-load contexts."""
-    try:
-        from .report_generator import DACReportGenerator
-    except ImportError:
-        from report_generator import DACReportGenerator
-    return DACReportGenerator
-
-
 def _create_visualization(result: dict, lat: float, lon: float,
                            buffer_miles: float) -> str:
-    """
-    Folium map showing project location, study area buffer, and DAC tracts.
-    Consistent with other AutoEIA module visualizations (CartoDB positron basemap).
-    """
+    """Folium map: project location, study area buffer, DAC tracts."""
     import folium
 
     det = result['screening_determination']
@@ -806,7 +904,6 @@ def _create_visualization(result: dict, lat: float, lon: float,
 
     m = folium.Map(location=[lat, lon], zoom_start=14, tiles='CartoDB positron')
 
-    # Study area buffer (dashed blue circle)
     folium.GeoJson(
         result['study_area_geojson'],
         name=f'Study Area ({buffer_miles} mi buffer)',
@@ -817,7 +914,6 @@ def _create_visualization(result: dict, lat: float, lon: float,
         tooltip=f'{buffer_miles} mile study area (CEQR Ch. 23 §320)',
     ).add_to(m)
 
-    # DAC tracts in study area
     dac_geojson = result['dac_tracts_geojson']
     if dac_geojson.get('features'):
         folium.GeoJson(
@@ -830,23 +926,20 @@ def _create_visualization(result: dict, lat: float, lon: float,
             },
             tooltip=folium.GeoJsonTooltip(
                 fields=['geoid', 'distance_miles'],
-                aliases=['Census Tract (GEOID):', 'Distance (mi):'],
+                aliases=['Census Tract:', 'Distance (mi):'],
                 sticky=False,
             ),
         ).add_to(m)
 
-    # Project location marker
     status = 'Within/proximate to DAC' if proximate else 'Not proximate to DAC'
     folium.Marker(
         location=[lat, lon],
         popup=folium.Popup(
-            f"<b>Project Site</b><br>{status}<br>"
-            f"DAC tracts in study area: {n_tracts}",
+            f"<b>Project Site</b><br>{status}<br>DAC tracts in study area: {n_tracts}",
             max_width=260,
         ),
         tooltip='Project Site',
-        icon=folium.Icon(color='red' if proximate else 'blue',
-                         icon='home', prefix='fa'),
+        icon=folium.Icon(color='red' if proximate else 'blue', icon='home', prefix='fa'),
     ).add_to(m)
 
     folium.LayerControl().add_to(m)
@@ -856,13 +949,8 @@ def _create_visualization(result: dict, lat: float, lon: float,
 def execute(inputs: dict) -> dict:
     """
     AutoEIA platform entry point — CEQR Chapter 23 DAC screening.
-
-    Accepts building_geojson for project location (centroid extracted),
-    consistent with the shadow and transportation module conventions.
-    Fetches DAC tract data from local cache (datasets/nyc_dac_tracts.geojson)
-    or from the NYS ArcGIS Feature Service on first run.
+    Uses building_geojson centroid as project location (consistent with other modules).
     """
-    import json as _json
     import geopandas as _gpd
     from shapely.ops import unary_union as _unary_union
 
@@ -870,28 +958,26 @@ def execute(inputs: dict) -> dict:
     if not building_geojson:
         raise ValueError("building_geojson is required")
     if isinstance(building_geojson, str):
-        building_geojson = _json.loads(building_geojson)
+        building_geojson = json.loads(building_geojson)
 
-    # Extract project centroid from footprint geometry
     building_gdf = _gpd.GeoDataFrame.from_features(building_geojson['features'])
     if building_gdf.crs is None:
         building_gdf.set_crs(epsg=4326, inplace=True)
     centroid = _unary_union(building_gdf.geometry).centroid
     lat, lon = centroid.y, centroid.x
 
-    # Parse ceqr_technical_areas (array type arrives as JSON string from UI textarea)
+    # ceqr_technical_areas arrives as a list from the multiselect UI widget
     ceqr_areas_raw = inputs.get('ceqr_technical_areas')
     ceqr_areas = []
     if ceqr_areas_raw:
         if isinstance(ceqr_areas_raw, str):
-            ceqr_areas = _json.loads(ceqr_areas_raw)
+            ceqr_areas = json.loads(ceqr_areas_raw)
         elif isinstance(ceqr_areas_raw, list):
             ceqr_areas = ceqr_areas_raw
 
     buffer_miles = float(inputs.get('buffer_distance_miles') or 0.5)
     project_description = inputs.get('project_description') or ''
 
-    # Run screening assessment
     result = DACAssessment().run(
         project_location=(lat, lon),
         project_description=project_description,
@@ -899,11 +985,7 @@ def execute(inputs: dict) -> dict:
         buffer_distance_miles=buffer_miles,
     )
 
-    # Generate narrative report
-    DACReportGenerator = _load_report_generator()
     report = DACReportGenerator().generate_screening_report(result)
-
-    # Generate Folium map
     viz = _create_visualization(result, lat, lon, buffer_miles)
 
     return {
