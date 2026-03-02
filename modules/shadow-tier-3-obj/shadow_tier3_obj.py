@@ -45,7 +45,10 @@ CEQR_ANALYSIS_DATES = {
     'generic': ['2024-12-21', '2024-03-21', '2024-06-21'],
 }
 
-ANALYSIS_INTERVAL_MIN = 20
+ANALYSIS_INTERVAL_MIN = {
+    'NYC': 60,      # CEQR Technical Manual Chapter 8: hourly analysis
+    'generic': 30,  # Non-CEQR: 30-min for finer sweep
+}
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +246,7 @@ def build_site_impact_summary(sites_hit):
 
 
 def generate_report(height_m, n_vertices, n_faces, lat, lon, jurisdiction,
-                    analysis_dates, shadow_features, sites_affected):
+                    interval_min, analysis_dates, shadow_features, sites_affected):
     n_shadows = len(shadow_features)
     n_sites = len(sites_affected)
 
@@ -262,7 +265,7 @@ ANALYSIS PARAMETERS
 Representative Days: {', '.join(analysis_dates)}
 Time Window: 1.5 hours after sunrise to 1.5 hours before sunset
 Time Zone: Eastern Standard Time (no daylight savings)
-Analysis Interval: {ANALYSIS_INTERVAL_MIN} minutes
+Analysis Interval: {interval_min} minutes
 Total Shadow Snapshots: {n_shadows}
 
 SENSITIVE SITE IMPACTS
@@ -429,6 +432,8 @@ def execute(inputs):
     if not analysis_dates:
         analysis_dates = CEQR_ANALYSIS_DATES.get(jurisdiction, CEQR_ANALYSIS_DATES['generic'])
 
+    interval_min = ANALYSIS_INTERVAL_MIN.get(jurisdiction, ANALYSIS_INTERVAL_MIN['generic'])
+
     # Run shadow analysis
     all_shadow_features = []
     sites_hit = {}
@@ -475,14 +480,14 @@ def execute(inputs):
                         if shadow_wgs.intersects(site_row.geometry):
                             sites_hit.setdefault(site_name, []).append(current_dt)
 
-            current_dt += timedelta(minutes=ANALYSIS_INTERVAL_MIN)
+            current_dt += timedelta(minutes=interval_min)
 
     shadow_geojson = {'type': 'FeatureCollection', 'features': all_shadow_features}
     sites_affected = build_site_impact_summary(sites_hit)
 
     report = generate_report(
         max_height_m, len(vertices_local), len(faces), lat, lon, jurisdiction,
-        analysis_dates, all_shadow_features, sites_affected
+        interval_min, analysis_dates, all_shadow_features, sites_affected
     )
 
     viz = create_visualization(building_gdf, all_shadow_features, sites_gdf, sites_hit, lat, lon)
