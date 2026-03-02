@@ -47,10 +47,11 @@ ANALYSIS_INTERVAL_MIN = 60
 # OBJ parsing + georeferencing
 # ---------------------------------------------------------------------------
 
-def parse_obj_vertices(obj_text, up_axis='Z'):
+def parse_obj_vertices(obj_text, up_axis='Z', scale=1.0):
     """
     Extract (x, y, z) vertices from OBJ file text.
     If up_axis='Y' (SketchUp/OpenGL), swaps Y and Z so that Z always = height.
+    scale converts from model units to meters (e.g. 0.01 for centimeters, 0.0254 for inches).
     """
     vertices = []
     for line in obj_text.splitlines():
@@ -63,7 +64,7 @@ def parse_obj_vertices(obj_text, up_axis='Z'):
             continue
         if up_axis == 'Y':
             x, y, z = x, -z, y   # Y-up to Z-up: swap y/z, negate depth
-        vertices.append((x, y, z))
+        vertices.append((x * scale, y * scale, z * scale))
     return vertices
 
 
@@ -329,6 +330,7 @@ def execute(inputs):
     analysis_dates = inputs.get('analysis_dates')
     model_rotation_deg = float(inputs.get('model_rotation_deg') or 0.0)
     model_up_axis = inputs.get('model_up_axis', 'Z').upper()
+    model_scale = float(inputs.get('model_scale') or 1.0)
 
     if not building_geojson:
         raise ValueError("building_geojson is required")
@@ -347,7 +349,7 @@ def execute(inputs):
     lat, lon = centroid.y, centroid.x
 
     # Parse OBJ
-    vertices_local = parse_obj_vertices(building_obj, up_axis=model_up_axis)
+    vertices_local = parse_obj_vertices(building_obj, up_axis=model_up_axis, scale=model_scale)
     if not vertices_local:
         raise ValueError("No vertices found in OBJ file. Check format and up_axis setting.")
 

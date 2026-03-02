@@ -27,6 +27,12 @@
       "description": "Which model axis is 'up' (height). Z-up = Rhino/GIS convention. Y-up = SketchUp/OpenGL convention.",
       "optional": true
     },
+    "model_scale": {
+      "type": "number",
+      "description": "Scale factor to convert model units to meters. 1.0 = meters (default), 0.01 = centimeters (3ds Max), 0.0254 = inches.",
+      "default": 1.0,
+      "optional": true
+    },
     "jurisdiction": {
       "type": "enum",
       "enum": ["NYC", "generic"],

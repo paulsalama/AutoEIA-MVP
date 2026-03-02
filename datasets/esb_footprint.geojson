@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Empire State Building",
+        "address": "350 5th Ave, New York, NY 10118",
+        "note": "Approximate base footprint, Manhattan-grid-aligned (29° CW from true north). Use with 10068_empire_state_building_v1_L3.obj, model_scale=0.01, model_rotation_deg=29, model_up_axis=Z"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-73.985138, 40.748642],
+          [-73.985699, 40.748878],
+          [-73.986182, 40.748218],
+          [-73.985621, 40.747982],
+          [-73.985138, 40.748642]
+        ]]
+      }
+    }
+  ]
+}
