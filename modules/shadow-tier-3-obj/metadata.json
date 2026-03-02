@@ -1,0 +1,60 @@
+{
+  "name": "shadow_tier3_obj",
+  "display_name": "Shadow Tier 3: 3D Model (OBJ)",
+  "emoji": "🏗️",
+  "description": "CEQR Tier 3 shadow projection using a real 3D building model (.obj). More accurate than footprint+height for buildings with setbacks, tapered profiles, or complex massing. Uses pysolar + UTM geometry — same methodology as Tier 3.",
+  "category": "shadows",
+  "jurisdiction": ["NYC", "generic"],
+  "inputs": {
+    "building_geojson": {
+      "type": "geojson",
+      "description": "Building footprint — used to anchor the model in geographic space (lat/lon)",
+      "optional": false
+    },
+    "building_obj": {
+      "type": "obj",
+      "description": "OBJ 3D model of the building. Assumes Z-up (height), meters, +Y = north by default.",
+      "optional": false
+    },
+    "model_rotation_deg": {
+      "type": "number",
+      "description": "Degrees clockwise from north that the model's +Y axis points. 0 = true north. Use 29 for Manhattan street grid.",
+      "optional": true
+    },
+    "model_up_axis": {
+      "type": "enum",
+      "enum": ["Z", "Y"],
+      "description": "Which model axis is 'up' (height). Z-up = Rhino/GIS convention. Y-up = SketchUp/OpenGL convention.",
+      "optional": true
+    },
+    "jurisdiction": {
+      "type": "enum",
+      "enum": ["NYC", "generic"],
+      "description": "Jurisdiction for default analysis dates. NYC uses CEQR representative days.",
+      "optional": false
+    },
+    "sensitive_sites": {
+      "type": "geojson",
+      "description": "Sensitive sites to test for shadow impact. Defaults to NYC Parks dataset.",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "shadow_polygons": {
+      "type": "geojson",
+      "description": "Shadow polygon for each analysis time snapshot"
+    },
+    "sites_affected": {
+      "type": "object",
+      "description": "Sites receiving shadow with shadow entry/exit times and duration per analysis day"
+    },
+    "summary_report": {
+      "type": "text",
+      "description": "Detailed CEQR-methodology report including building model info"
+    },
+    "visualization": {
+      "type": "html",
+      "description": "Interactive map showing shadow sweeps per analysis day with sensitive site impact"
+    }
+  }
+}

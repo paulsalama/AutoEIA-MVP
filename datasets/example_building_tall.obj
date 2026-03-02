@@ -1,0 +1,33 @@
+# Example Tall Tower — Midtown Manhattan
+# Simple box massing: ~84m E-W x 111m N-S x 244m tall (~800ft)
+# Centered at origin. Z-up, meters. +Y = north.
+# When loaded in shadow_tier3_obj: set model_rotation_deg=29 for Manhattan grid alignment.
+#
+# Footprint: matches example_building_tall.geojson (Manhattan-grid-aligned)
+# Height: 244m (800ft)
+
+# Ground corners (z=0)
+v -42.0 -55.5  0.0
+v  42.0 -55.5  0.0
+v  42.0  55.5  0.0
+v -42.0  55.5  0.0
+
+# Roof corners (z=244m)
+v -42.0 -55.5 243.84
+v  42.0 -55.5 243.84
+v  42.0  55.5 243.84
+v -42.0  55.5 243.84
+
+# Faces (each face = 1 wall or slab)
+# Bottom
+f 1 2 3 4
+# Top
+f 8 7 6 5
+# South wall
+f 1 2 6 5
+# East wall
+f 2 3 7 6
+# North wall
+f 3 4 8 7
+# West wall
+f 4 1 5 8

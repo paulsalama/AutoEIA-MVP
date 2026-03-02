@@ -163,6 +163,53 @@ function FormField({ name, schema, value, onChange, required }) {
           </div>
         )
 
+      case 'obj': {
+        const handleObjFileChange = (e) => {
+          const file = e.target.files[0]
+          if (file) {
+            setFileName(file.name)
+            const reader = new FileReader()
+            reader.onload = (event) => {
+              const text = event.target.result
+              if (!text.includes('\nv ') && !text.startsWith('v ')) {
+                setError('File does not appear to be a valid OBJ (no vertices found)')
+                onChange(null)
+              } else {
+                onChange(text)
+                setError(null)
+              }
+            }
+            reader.onerror = () => { setError('Error reading file'); onChange(null) }
+            reader.readAsText(file)
+          }
+        }
+        return (
+          <div className="file-upload">
+            <label className="file-upload-label">
+              <input
+                type="file"
+                accept=".obj"
+                onChange={handleObjFileChange}
+                className="file-input"
+              />
+              <span className="file-button">Choose .obj File</span>
+              <span className="file-name">
+                {fileName || (value ? 'Model loaded' : 'No file selected')}
+              </span>
+            </label>
+            {value && (
+              <button
+                type="button"
+                className="clear-file-btn"
+                onClick={() => { onChange(null); setFileName(null) }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )
+      }
+
       case 'text':
         return (
           <textarea
