@@ -6,13 +6,18 @@ model (.obj file) instead of a 2D footprint + uniform height. This produces more
 accurate shadows for buildings with setbacks, tapered profiles, or complex massing.
 
 Algorithm:
-  1. Parse OBJ vertices → list of (x, y, z) in local model space
+  1. Parse OBJ vertices + faces → list of (x,y,z) + list of face index lists
   2. Align model to UTM: center at building_geojson footprint centroid, apply rotation
   3. For each analysis datetime + solar position:
-       - For every vertex: project its shadow tip onto the ground plane
-         (shadow_length = z / tan(solar_altitude))
-       - Shadow polygon = convex hull of all vertex projections + their shadow tips
+       - For every face: project its 3+ vertices' shadow tips onto the ground plane
+         (shadow_tip = vertex_xy + z/tan(solar_altitude) * shadow_direction)
+       - Face shadow = convex hull of {face vertex ground positions} + {shadow tips}
+       - Building shadow = union of all face shadow polygons
   4. Intersect shadow polygons with sensitive sites → impact summary
+
+Using face-by-face projection (rather than a single convex hull of all vertices)
+accurately captures the building's silhouette shape, including setbacks, tapers,
+and complex massing like the ESB's stepped profile.
 
 CEQR NYC representative days: Dec 21, Mar 21, May 6, Jun 21
 Time window: 1.5h after sunrise to 1.5h before sunset (EST, no DST)
@@ -40,32 +45,49 @@ CEQR_ANALYSIS_DATES = {
     'generic': ['2024-12-21', '2024-03-21', '2024-06-21'],
 }
 
-ANALYSIS_INTERVAL_MIN = 60
+ANALYSIS_INTERVAL_MIN = 20
 
 
 # ---------------------------------------------------------------------------
 # OBJ parsing + georeferencing
 # ---------------------------------------------------------------------------
 
-def parse_obj_vertices(obj_text, up_axis='Z', scale=1.0):
+def parse_obj(obj_text, up_axis='Z', scale=1.0):
     """
-    Extract (x, y, z) vertices from OBJ file text.
-    If up_axis='Y' (SketchUp/OpenGL), swaps Y and Z so that Z always = height.
-    scale converts from model units to meters (e.g. 0.01 for centimeters, 0.0254 for inches).
+    Parse an OBJ file into vertices and faces.
+
+    Returns:
+        vertices: list of (x, y, z) in meters
+        faces: list of [i, j, k, ...] (0-indexed vertex indices)
+
+    up_axis='Y' handles SketchUp/OpenGL convention (Y=up) by swapping Y↔Z.
+    scale converts model units to meters (e.g. 0.01 for cm, 0.0254 for inches).
     """
     vertices = []
+    faces = []
     for line in obj_text.splitlines():
         parts = line.strip().split()
-        if not parts or parts[0] != 'v':
+        if not parts:
             continue
-        try:
-            x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
-        except (IndexError, ValueError):
-            continue
-        if up_axis == 'Y':
-            x, y, z = x, -z, y   # Y-up to Z-up: swap y/z, negate depth
-        vertices.append((x * scale, y * scale, z * scale))
-    return vertices
+        if parts[0] == 'v':
+            try:
+                x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+            except (IndexError, ValueError):
+                continue
+            if up_axis == 'Y':
+                x, y, z = x, -z, y   # Y-up to Z-up
+            vertices.append((x * scale, y * scale, z * scale))
+        elif parts[0] == 'f':
+            face = []
+            for token in parts[1:]:
+                try:
+                    idx = int(token.split('/')[0]) - 1  # OBJ is 1-indexed
+                    face.append(idx)
+                except ValueError:
+                    continue
+            if len(face) >= 3:
+                faces.append(face)
+    return vertices, faces
 
 
 def align_obj_to_utm(vertices, cx_utm, cy_utm, rotation_deg=0.0):
@@ -102,17 +124,22 @@ def align_obj_to_utm(vertices, cx_utm, cy_utm, rotation_deg=0.0):
 
 
 # ---------------------------------------------------------------------------
-# Shadow projection (per-vertex, replaces uniform extrusion)
+# Shadow projection (face-based mesh projection)
 # ---------------------------------------------------------------------------
 
-def project_shadow_from_vertices(vertices_3d_utm, solar_altitude_deg, solar_azimuth_deg):
+def project_shadow_from_mesh(vertices_utm, faces, solar_altitude_deg, solar_azimuth_deg):
     """
-    Project the shadow of a 3D building (arbitrary vertex cloud) onto the ground.
+    Project each OBJ face's shadow onto the ground plane, then union all faces.
 
-    For each vertex at height z:
-      shadow_tip = (x + z/tan(alt) * sin(az+180), y + z/tan(alt) * cos(az+180))
+    Per-face projection is far more accurate than a single convex hull of all
+    vertices: it correctly captures the building's silhouette for stepped or
+    tapered buildings (setbacks, mechanical penthouses, spires, etc.).
 
-    Shadow polygon = convex hull of all ground projections + all shadow tips.
+    For each face:
+      - Each vertex at height z projects a shadow tip at distance z/tan(alt)
+        in the shadow direction (opposite to sun azimuth)
+      - Face shadow = convex hull of {vertex ground positions} + {shadow tips}
+    Total shadow = union of all face shadows.
     """
     if solar_altitude_deg <= 2.0:
         return None
@@ -122,18 +149,28 @@ def project_shadow_from_vertices(vertices_3d_utm, solar_altitude_deg, solar_azim
     sin_az = math.sin(shadow_az_rad)
     cos_az = math.cos(shadow_az_rad)
 
-    pts = []
-    for x, y, z in vertices_3d_utm:
-        pts.append((x, y))          # vertex projected to ground
-        if z > 0.1:                 # only meaningful height contributes shadow
-            shadow_len = z / tan_alt
-            pts.append((x + shadow_len * sin_az, y + shadow_len * cos_az))
+    def shadow_tip(x, y, z):
+        if z <= 0.1:
+            return (x, y)
+        return (x + z / tan_alt * sin_az, y + z / tan_alt * cos_az)
 
-    if len(pts) < 3:
+    shadow_polys = []
+    for face in faces:
+        verts = [vertices_utm[i] for i in face if 0 <= i < len(vertices_utm)]
+        if len(verts) < 3:
+            continue
+        pts = [(v[0], v[1]) for v in verts] + [shadow_tip(v[0], v[1], v[2]) for v in verts]
+        try:
+            hull = MultiPoint(pts).convex_hull
+            if hull.is_valid and not hull.is_empty and hull.area > 0:
+                shadow_polys.append(hull)
+        except Exception:
+            continue
+
+    if not shadow_polys:
         return None
-
-    hull = MultiPoint(pts).convex_hull
-    return hull if hull.is_valid else None
+    result = unary_union(shadow_polys)
+    return result if result.is_valid else None
 
 
 def transform_polygon_to_wgs(polygon_utm, utm_to_wgs):
@@ -205,7 +242,7 @@ def build_site_impact_summary(sites_hit):
     return summary
 
 
-def generate_report(height_m, n_vertices, lat, lon, jurisdiction,
+def generate_report(height_m, n_vertices, n_faces, lat, lon, jurisdiction,
                     analysis_dates, shadow_features, sites_affected):
     n_shadows = len(shadow_features)
     n_sites = len(sites_affected)
@@ -213,7 +250,7 @@ def generate_report(height_m, n_vertices, lat, lon, jurisdiction,
     report = f"""Shadow Tier 3: 3D Model Screening Results
 ==========================================
 
-Building Model: OBJ ({n_vertices} vertices, max height {height_m:.1f} m / {height_m / 0.3048:.0f} ft)
+Building Model: OBJ ({n_vertices} vertices, {n_faces} faces, max height {height_m:.1f} m / {height_m / 0.3048:.0f} ft)
 Location: {round(lat, 4)}N, {round(abs(lon), 4)}W
 Jurisdiction: {jurisdiction}
 Analysis Method: CEQR Technical Manual Chapter 8, Sections 314-314.5
@@ -349,9 +386,11 @@ def execute(inputs):
     lat, lon = centroid.y, centroid.x
 
     # Parse OBJ
-    vertices_local = parse_obj_vertices(building_obj, up_axis=model_up_axis, scale=model_scale)
+    vertices_local, faces = parse_obj(building_obj, up_axis=model_up_axis, scale=model_scale)
     if not vertices_local:
         raise ValueError("No vertices found in OBJ file. Check format and up_axis setting.")
+    if not faces:
+        raise ValueError("No faces found in OBJ file. The module requires face (f) definitions for accurate shadow projection.")
 
     max_height_m = max(v[2] for v in vertices_local)
 
@@ -411,7 +450,7 @@ def execute(inputs):
             azimuth = get_azimuth(lat, lon, current_dt)
 
             if altitude > 2.0:
-                shadow_utm = project_shadow_from_vertices(vertices_utm, altitude, azimuth)
+                shadow_utm = project_shadow_from_mesh(vertices_utm, faces, altitude, azimuth)
 
                 if shadow_utm and shadow_utm.is_valid:
                     shadow_wgs = transform_polygon_to_wgs(shadow_utm, utm_to_wgs)
@@ -442,7 +481,7 @@ def execute(inputs):
     sites_affected = build_site_impact_summary(sites_hit)
 
     report = generate_report(
-        max_height_m, len(vertices_local), lat, lon, jurisdiction,
+        max_height_m, len(vertices_local), len(faces), lat, lon, jurisdiction,
         analysis_dates, all_shadow_features, sites_affected
     )
 
@@ -502,6 +541,8 @@ f 4 1 5 8
         'model_rotation_deg': 29,
         'jurisdiction': 'NYC',
     }
+    verts, fcs = parse_obj(test_obj)
+    print(f"Parsed: {len(verts)} vertices, {len(fcs)} faces")
     result = execute(test_inputs)
     print(result['summary_report'])
     print(f"Shadow features: {len(result['shadow_polygons']['features'])}")
