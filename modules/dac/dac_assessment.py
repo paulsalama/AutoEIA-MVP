@@ -36,11 +36,12 @@ logger = logging.getLogger(__name__)
 # Data constants
 # ---------------------------------------------------------------------------
 
-# ArcGIS Feature Service — authoritative NYS DAC tract boundaries
-DAC_FEATURE_SERVICE_URL = (
-    "https://services6.arcgis.com/DZHaqZm9elBMHCq6/arcgis/rest/services/"
-    "Final_Disadvantaged_Communities_DAC_2023/FeatureServer/0/query"
-)
+# data.ny.gov Socrata API — Final Disadvantaged Communities (DAC) 2023
+# Dataset: https://data.ny.gov/Energy-Environment/Final-Disadvantaged-Communities-DAC-2023/2e6c-s6fp
+DAC_SOCRATA_URL = "https://data.ny.gov/resource/2e6c-s6fp.geojson"
+
+# NYC borough county names as used in this dataset
+NYC_COUNTIES = ("Bronx", "Kings", "New York", "Queens", "Richmond")
 
 NYC_BBOX = {
     "xmin": -74.2591, "ymin": 40.4774,
@@ -92,6 +93,37 @@ _INDICATOR_TO_FACTOR = {
     ind: factor
     for factor, indicators in DAC_INDICATOR_FACTORS.items()
     for ind in indicators
+}
+
+# Maps data.ny.gov column names → internal indicator names
+_FIELD_MAPPING = {
+    "asthma_ed_rate": "asthma_ed_visits",
+    "copd_ed_rate": "copd_ed_visits",
+    "mi_hospitalization_rate": "cardiac_disease_hospitalizations",
+    "low_birth_weight": "low_birth_weight",
+    "premature_deaths": "premature_deaths",
+    "internet_access": "broadband_access",
+    "mobile_homes": "mobile_homes",
+    "rent_percent_income": "rent_burden",
+    "english_proficiency": "linguistic_isolation",
+    "unemployment_rate": "unemployment_rate",
+    "lmi_poverty_federal": "poverty_rate",
+    "population_no_college": "educational_attainment",
+    "redlining_updated": "historic_redlining",
+    "industrial_land_use": "industrial_land_use",
+    "landfills": "landfills_scrap_yards",
+    "remediation_sites": "remediation_sites",
+    "wastewater_discharge": "wastewater_discharge",
+    "coastal_flooding_storm_risk": "coastal_flood_risk",
+    "inland_flooding_risk": "inland_flood_risk",
+    "days_above_90_degrees_2050": "heat_vulnerability",
+    "particulate_matter_25": "pm25_concentration",
+    "traffic_number_vehicles": "traffic_proximity",
+    "traffic_truck_highways": "truck_traffic",
+    "benzene_concentration": "air_toxics_cancer_risk",
+    "rmp_sites": "major_facility_proximity",
+    "scrap_metal_processing": "landfills_scrap_yards",
+    "low_vegetative_cover": "urban_heat_island",
 }
 
 # CEQR technical area → pollution burden relevance
@@ -207,8 +239,17 @@ class DACDataLoader:
                 continue
             tract = {}
             for key, val in props.items():
+                # Try direct name match first, then field mapping
                 norm = key.lower().replace(" ", "_")
-                if norm in _INDICATOR_TO_FACTOR:
+                internal = _FIELD_MAPPING.get(norm, norm if norm in _INDICATOR_TO_FACTOR else None)
+                if internal:
+                    try:
+                        tract[internal] = float(val)
+                    except (ValueError, TypeError):
+                        pass
+                # Also pass through score fields verbatim for percentile lookups
+                elif norm in ("combined_score", "burden_score_percentile",
+                              "vulnerability_score_percentile", "percentile_rank_combined"):
                     try:
                         tract[norm] = float(val)
                     except (ValueError, TypeError):
@@ -224,19 +265,12 @@ class DACDataLoader:
             raise ImportError(
                 "`requests` library required for online fetching. pip install requests"
             )
-        bbox = NYC_BBOX
-        params = {
-            "where": "DAC_Designation='Yes' OR DAC_designa='Yes'",
-            "geometryType": "esriGeometryEnvelope",
-            "geometry": f"{bbox['xmin']},{bbox['ymin']},{bbox['xmax']},{bbox['ymax']}",
-            "inSR": "4326", "outSR": "4326",
-            "outFields": "*", "f": "geojson",
-            "resultRecordCount": 5000,
-        }
-        resp = requests.get(DAC_FEATURE_SERVICE_URL, params=params, timeout=60)
+        county_filter = " OR ".join(f"county='{c}'" for c in NYC_COUNTIES)
+        params = {"$limit": 5000, "$where": county_filter}
+        resp = requests.get(DAC_SOCRATA_URL, params=params, timeout=60)
         resp.raise_for_status()
         geojson = resp.json()
-        logger.info(f"Fetched {len(geojson.get('features', []))} DAC tracts")
+        logger.info(f"Fetched {len(geojson.get('features', []))} NYC tracts from data.ny.gov")
         self.save_local_cache(dac_tracts=geojson)
         return geojson
 
@@ -457,6 +491,9 @@ class DACAssessment:
         affected = []
         for feature in dac_features:
             props = feature.get("properties", {})
+            # Skip non-DAC tracts (dataset contains all NYC tracts)
+            if props.get("dac_designation") != "Designated as DAC":
+                continue
             geoid = props.get("GEOID", props.get("geoid", props.get("GEOID20", "")))
             if not geoid:
                 continue
@@ -469,7 +506,7 @@ class DACAssessment:
             burden, vuln = self._rank_indicators(tract_indicators)
             affected.append(DACTractResult(
                 geoid=geoid,
-                tract_name=props.get("NAME", props.get("name", "")),
+                tract_name=props.get("NAME", props.get("name", props.get("city_town", ""))),
                 county_name=props.get("COUNTY", props.get("county", "")),
                 distance_miles=round(dist, 3),
                 is_within_project=is_within,
@@ -478,8 +515,8 @@ class DACAssessment:
                 top_burden_indicators=burden[:5],
                 top_vulnerability_indicators=vuln[:5],
                 combined_score_percentile=tract_indicators.get("combined_score"),
-                burden_component_percentile=tract_indicators.get("burden_component"),
-                vulnerability_component_percentile=tract_indicators.get("vulnerability_component"),
+                burden_component_percentile=tract_indicators.get("burden_score_percentile"),
+                vulnerability_component_percentile=tract_indicators.get("vulnerability_score_percentile"),
                 geometry=feature.get("geometry"),
             ))
         affected.sort(key=lambda t: t.distance_miles)
