@@ -360,6 +360,18 @@ CEQR_POLLUTION_RELEVANCE = {
 
 
 # ---------------------------------------------------------------------------
+def _pct100(val) -> Optional[float]:
+    """Convert a 0–1 decimal proportion to 0–100 percentage, pass through None."""
+    if val is None:
+        return None
+    try:
+        v = float(val)
+        # Values already > 1 are assumed to already be 0–100
+        return round(v * 100, 1) if v <= 1.0 else round(v, 1)
+    except (TypeError, ValueError):
+        return None
+
+
 # Geometry helpers (pure Python — no Shapely dependency for spatial checks)
 # ---------------------------------------------------------------------------
 
@@ -514,9 +526,9 @@ class DACAssessment:
                 indicator_count=len(tract_indicators),
                 top_burden_indicators=burden[:5],
                 top_vulnerability_indicators=vuln[:5],
-                combined_score_percentile=tract_indicators.get("combined_score"),
-                burden_component_percentile=tract_indicators.get("burden_score_percentile"),
-                vulnerability_component_percentile=tract_indicators.get("vulnerability_score_percentile"),
+                combined_score_percentile=_pct100(tract_indicators.get("percentile_rank_combined")),
+                burden_component_percentile=_pct100(tract_indicators.get("burden_score_percentile")),
+                vulnerability_component_percentile=_pct100(tract_indicators.get("vulnerability_score_percentile")),
                 geometry=feature.get("geometry"),
             ))
         affected.sort(key=lambda t: t.distance_miles)
@@ -680,22 +692,28 @@ class DACAssessment:
                     if gid == tract.geoid:
                         geometry = f.get("geometry")
                         break
+            # List top burden/vulnerability indicator names (values are relative, not statewide pct)
+            burden_parts = [
+                n.replace('_', ' ').title()
+                for n, _ in tract.top_burden_indicators[:5]
+            ]
+            vuln_parts = [
+                n.replace('_', ' ').title()
+                for n, _ in tract.top_vulnerability_indicators[:3]
+            ]
             features.append({
                 "type": "Feature",
                 "properties": {
                     "geoid": tract.geoid,
-                    "tract_name": tract.tract_name,
+                    "tract_name": tract.tract_name or tract.geoid,
                     "county_name": tract.county_name,
-                    "distance_miles": tract.distance_miles,
+                    "distance_miles": round(tract.distance_miles, 2),
                     "is_project_within": tract.is_within_project,
-                    "top_burden_indicators": [
-                        {"indicator": n, "percentile": p}
-                        for n, p in tract.top_burden_indicators
-                    ],
-                    "top_vulnerability_indicators": [
-                        {"indicator": n, "percentile": p}
-                        for n, p in tract.top_vulnerability_indicators
-                    ],
+                    "combined_score_pct": tract.combined_score_percentile,
+                    "burden_score_pct": tract.burden_component_percentile,
+                    "vulnerability_score_pct": tract.vulnerability_component_percentile,
+                    "top_burdens": " · ".join(burden_parts) if burden_parts else "See CJWG map",
+                    "top_vulnerabilities": " · ".join(vuln_parts) if vuln_parts else "",
                 },
                 "geometry": geometry,
             })
@@ -930,54 +948,124 @@ class DACReportGenerator:
 # AutoEIA Platform Integration
 # ---------------------------------------------------------------------------
 
+def _burden_color(score) -> str:
+    """Map combined burden score (0–100 percentile) to a red-yellow gradient."""
+    if score is None:
+        return '#9ca3af'   # gray — no data
+    if score >= 85:
+        return '#b91c1c'   # dark red
+    if score >= 70:
+        return '#dc2626'   # red
+    if score >= 55:
+        return '#ea580c'   # dark orange
+    if score >= 40:
+        return '#f97316'   # orange
+    return '#fbbf24'       # yellow
+
+
 def _create_visualization(result: dict, lat: float, lon: float,
                            buffer_miles: float) -> str:
-    """Folium map: project location, study area buffer, DAC tracts."""
+    """
+    Folium map showing:
+    - DAC census tracts colored by cumulative environmental burden score
+    - ½-mile study area buffer
+    - Project location with assessment result
+    """
     import folium
 
     det = result['screening_determination']
     proximate = det['project_within_half_mile_of_dac']
     n_tracts = det['dac_tracts_in_study_area']
+    classification = det.get('proximity_classification', '')
 
-    m = folium.Map(location=[lat, lon], zoom_start=14, tiles='CartoDB positron')
+    m = folium.Map(location=[lat, lon], zoom_start=13, tiles='CartoDB positron')
 
+    # --- Study area buffer ---
     folium.GeoJson(
         result['study_area_geojson'],
-        name=f'Study Area ({buffer_miles} mi buffer)',
+        name=f'½-Mile Study Area',
         style_function=lambda x: {
             'fillColor': '#3b82f6', 'color': '#1d4ed8',
-            'weight': 2, 'fillOpacity': 0.06, 'dashArray': '6 4',
+            'weight': 2.5, 'fillOpacity': 0.04, 'dashArray': '8 4',
         },
-        tooltip=f'{buffer_miles} mile study area (CEQR Ch. 23 §320)',
+        tooltip=f'{buffer_miles}-mile study area (CEQR Ch. 23 §320)',
     ).add_to(m)
 
+    # --- DAC tracts colored by burden score ---
     dac_geojson = result['dac_tracts_geojson']
     if dac_geojson.get('features'):
         folium.GeoJson(
             dac_geojson,
-            name='DAC Census Tracts (study area)',
+            name='Disadvantaged Community Tracts',
             style_function=lambda x: {
-                'fillColor': '#ef4444' if x['properties'].get('is_project_within')
-                             else '#f97316',
-                'color': '#b91c1c', 'weight': 2, 'fillOpacity': 0.45,
+                'fillColor': _burden_color(x['properties'].get('combined_score_pct')),
+                'color': '#7f1d1d',
+                'weight': 1.5,
+                'fillOpacity': 0.65,
             },
             tooltip=folium.GeoJsonTooltip(
-                fields=['geoid', 'distance_miles'],
-                aliases=['Census Tract:', 'Distance (mi):'],
-                sticky=False,
+                fields=[
+                    'geoid', 'county_name', 'distance_miles',
+                    'combined_score_pct', 'burden_score_pct',
+                    'vulnerability_score_pct', 'top_burdens',
+                ],
+                aliases=[
+                    'Census Tract:', 'County:', 'Distance from project (mi):',
+                    'Combined Burden Score (statewide pct):',
+                    'Environmental Burden (statewide pct):',
+                    'Population Vulnerability (statewide pct):',
+                    'Highest Burden Indicators:',
+                ],
+                sticky=True,
+                max_width=360,
             ),
         ).add_to(m)
 
-    status = 'Within/proximate to DAC' if proximate else 'Not proximate to DAC'
+    # --- Project location marker ---
+    if proximate:
+        status_line = (
+            f"⚠️ Within ½ mile of {n_tracts} DAC tract{'s' if n_tracts != 1 else ''}"
+            if not det.get('project_within_dac')
+            else f"⚠️ Project site is WITHIN a DAC"
+        )
+        marker_color = 'red'
+    else:
+        status_line = "✅ Not proximate to a DAC"
+        marker_color = 'blue'
+
     folium.Marker(
         location=[lat, lon],
         popup=folium.Popup(
-            f"<b>Project Site</b><br>{status}<br>DAC tracts in study area: {n_tracts}",
-            max_width=260,
+            f"<b>Project Site</b><br>{status_line}<br>"
+            f"<span style='color:#6b7280;font-size:11px'>"
+            f"Assessment required: {det['assessment_level_required'].replace('_', ' ').title()}"
+            f"</span>",
+            max_width=280,
         ),
-        tooltip='Project Site',
-        icon=folium.Icon(color='red' if proximate else 'blue', icon='home', prefix='fa'),
+        tooltip='Project Site — click for result',
+        icon=folium.Icon(color=marker_color, icon='building', prefix='fa'),
     ).add_to(m)
+
+    # --- Legend ---
+    legend_html = """
+    <div style="position:fixed;bottom:30px;left:30px;z-index:1000;
+                background:white;border:1px solid #d1d5db;border-radius:8px;
+                padding:12px 16px;font-family:sans-serif;font-size:12px;
+                box-shadow:0 2px 6px rgba(0,0,0,0.15);min-width:190px">
+      <b style="font-size:13px">Cumulative Burden Score</b>
+      <div style="color:#6b7280;font-size:11px;margin-bottom:8px">(statewide percentile)</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div><span style="display:inline-block;width:16px;height:12px;background:#b91c1c;border-radius:2px;margin-right:6px"></span>85th+ percentile — most burdened</div>
+        <div><span style="display:inline-block;width:16px;height:12px;background:#ea580c;border-radius:2px;margin-right:6px"></span>55–84th percentile</div>
+        <div><span style="display:inline-block;width:16px;height:12px;background:#fbbf24;border-radius:2px;margin-right:6px"></span>Below 55th percentile</div>
+        <div><span style="display:inline-block;width:16px;height:12px;background:#9ca3af;border-radius:2px;margin-right:6px"></span>No data</div>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:10px">
+        Source: NYS CJWG DAC 2023 · CEQR Ch. 23
+      </div>
+    </div>
+    """
+    m.get_root().html.add_child(folium.Element(legend_html))
 
     folium.LayerControl().add_to(m)
     return m._repr_html_()
