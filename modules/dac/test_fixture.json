@@ -1,0 +1,24 @@
+{
+  "building_geojson": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-73.9863, 40.7484],
+            [-73.9848, 40.7484],
+            [-73.9848, 40.7494],
+            [-73.9863, 40.7494],
+            [-73.9863, 40.7484]
+          ]]
+        }
+      }
+    ]
+  },
+  "ceqr_technical_areas": ["air_quality", "noise"],
+  "buffer_distance_miles": 0.5,
+  "project_description": "Test project — midtown Manhattan office building"
+}

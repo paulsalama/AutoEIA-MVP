@@ -1,0 +1,22 @@
+{
+  "building_geojson": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-73.9863, 40.7484],
+            [-73.9848, 40.7484],
+            [-73.9848, 40.7494],
+            [-73.9863, 40.7494],
+            [-73.9863, 40.7484]
+          ]]
+        }
+      }
+    ]
+  },
+  "building_height_ft": 200
+}

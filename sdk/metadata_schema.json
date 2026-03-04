@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AutoEIA Module Metadata",
+  "description": "Schema for AutoEIA analysis module metadata.json files. Every module must include this file alongside its Python implementation.",
+  "type": "object",
+  "required": ["name", "display_name", "description", "category", "jurisdiction", "inputs", "outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Unique module identifier in snake_case. Must match the Python filename (e.g. 'shadow_tier3_projection' → 'shadow_tier3_projection.py')."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name shown in the UI node header."
+    },
+    "emoji": {
+      "type": "string",
+      "description": "Optional single emoji for visual identification in the module palette."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "description": "What this module analyzes, which methodology it implements, and what regulatory framework it supports."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "shadows",
+        "transportation",
+        "environmental_justice",
+        "air_quality",
+        "noise",
+        "hazardous_materials",
+        "socioeconomic",
+        "infrastructure",
+        "natural_resources",
+        "other"
+      ],
+      "description": "Module category for grouping in the UI palette."
+    },
+    "jurisdiction": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Jurisdictions where this module's methodology applies. Common values: 'NYC', 'NYS', 'generic'."
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Input port definitions. Each key becomes a field in the node's configuration panel.",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/definitions/inputPort" }
+    },
+    "outputs": {
+      "type": "object",
+      "description": "Output port definitions. Each key must be present in the dict returned by execute().",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/definitions/outputPort" }
+    }
+  },
+  "definitions": {
+    "inputPort": {
+      "type": "object",
+      "required": ["type", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["geojson", "number", "string", "text", "boolean", "array", "object", "enum", "multiselect", "obj"],
+          "description": "UI widget and validation type for this input."
+        },
+        "description": {
+          "type": "string",
+          "description": "Shown below the input field in the UI. Be specific about units, format, and defaults."
+        },
+        "optional": {
+          "type": "boolean",
+          "default": false,
+          "description": "If false (default), the workflow engine will warn when this input is not provided."
+        },
+        "default": {
+          "description": "Default value shown as placeholder in the UI. Any JSON-compatible type."
+        },
+        "enum": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Required when type='enum'. List of allowed string values rendered as a dropdown."
+        },
+        "options": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Required when type='multiselect'. List of checkbox options."
+        }
+      }
+    },
+    "outputPort": {
+      "type": "object",
+      "required": ["type", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["geojson", "html", "text", "object", "number", "string", "array", "boolean"],
+          "description": "Determines how the output is rendered in the results panel."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this output contains and how downstream modules can use it."
+        }
+      }
+    }
+  }
+}
