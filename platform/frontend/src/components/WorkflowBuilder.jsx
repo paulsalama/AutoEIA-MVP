@@ -32,6 +32,7 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           if (node.id === nodeId) {
             return {
               ...node,
+              className: '',  // clear run state when inputs change
               data: {
                 ...node.data,
                 configuredInputs,
@@ -45,7 +46,8 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
   }))
 
   const onConnect = useCallback(
-    (params) =>
+    (params) => {
+      setNodes((nds) => nds.map((n) => ({ ...n, className: '' })))  // clear run states on new connection
       setEdges((eds) =>
         addEdge(
           {
@@ -58,8 +60,9 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           },
           eds
         )
-      ),
-    [setEdges]
+      )
+    },
+    [setEdges, setNodes]
   )
 
   const onNodeClick = useCallback(
@@ -118,7 +121,9 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
       return
     }
 
-    // Notify parent that execution is starting
+    // Mark all nodes as running
+    setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-running' })))
+
     if (onWorkflowStart) {
       onWorkflowStart()
     }
@@ -131,17 +136,26 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
       })
 
       if (response.data.success) {
-        // Notify parent with results and current nodes
+        // Update each node based on its individual result
+        setNodes((nds) =>
+          nds.map((n) => {
+            const r = response.data.results?.[n.id]
+            if (!r) return { ...n, className: '' }
+            return { ...n, className: r.success ? 'node-done' : 'node-error' }
+          })
+        )
         if (onWorkflowComplete) {
           onWorkflowComplete(response.data.results, nodes)
         }
       } else {
+        setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-error' })))
         alert(`Workflow execution failed: ${response.data.error || 'Check backend logs'}`)
         if (onWorkflowComplete) {
           onWorkflowComplete(null, nodes)
         }
       }
     } catch (error) {
+      setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-error' })))
       console.error('Workflow execution error:', error)
       const errorMessage = error.response?.data?.error || error.message
       alert(`Error executing workflow: ${errorMessage}`)
