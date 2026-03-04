@@ -202,7 +202,57 @@ python autoeia.py test modules/my_module --fixture datasets/example_building_mid
 
 ---
 
-## 8. Complete Working Example
+## 8. Reference Datasets
+
+Some modules depend on external regulatory or spatial datasets that must be downloaded once and cached locally before the module can run. Examples include:
+
+- DAC module: NYS Disadvantaged Communities census tracts (data.ny.gov)
+- Future: EPA ECHO facility database, Census ACS data, DOT traffic counts, NWI wetlands
+
+**Convention**: Include a `fetch_data.py` in the module directory exposing a `fetch()` function with no required arguments.
+
+```
+modules/my_module/
+├── metadata.json
+├── my_module.py
+├── fetch_data.py      ← optional: download reference datasets
+└── test_fixture.json
+```
+
+**`fetch_data.py` template:**
+```python
+from pathlib import Path
+
+CACHE = Path(__file__).parent.parent.parent / "datasets" / "my_data.geojson"
+
+
+def fetch():
+    """Download and cache all reference datasets this module needs."""
+    import urllib.request
+    CACHE.parent.mkdir(parents=True, exist_ok=True)
+    print("Downloading my_data.geojson...")
+    urllib.request.urlretrieve("https://example.gov/api/data.geojson", CACHE)
+    print(f"Saved to {CACHE}")
+```
+
+Run it via the SDK CLI:
+```bash
+python autoeia.py fetch modules/my_module
+```
+
+**In `execute()`**, raise a clear `RuntimeError` if the cache is missing so the user knows exactly what to do:
+```python
+if not CACHE.exists():
+    raise RuntimeError(
+        "Reference dataset not found. Run:  python autoeia.py fetch modules/my_module"
+    )
+```
+
+The platform does not call `fetch_data.py` automatically — it is a one-time setup step.
+
+---
+
+## 9. Complete Working Example
 
 A minimal module that finds the centroid of the project footprint and generates a map:
 
@@ -267,7 +317,7 @@ def execute(inputs: dict) -> dict:
 
 ---
 
-## 9. Reference Module
+## 10. Reference Module
 
 For a full production example — solar position, UTM projection, site intersection analysis, Folium visualization, and a structured Markdown report — see:
 
@@ -277,7 +327,7 @@ This module implements CEQR Technical Manual Chapter 8 Tier 3 shadow analysis an
 
 ---
 
-## 10. Publishing a Module
+## 11. Publishing a Module
 
 To share a module:
 1. Run `python autoeia.py test modules/my_module` — all checks must pass

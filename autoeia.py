@@ -9,6 +9,7 @@ Usage:
     python autoeia.py new <name> [--category <cat>]  # scaffold a new module
     python autoeia.py validate <module_dir>           # check metadata.json only
     python autoeia.py test <module_dir> [--fixture]  # validate + run + check outputs
+    python autoeia.py fetch <module_dir>              # download reference datasets
 """
 
 import argparse
@@ -521,6 +522,41 @@ def execute(inputs: dict) -> dict:
 """)
 
 
+def cmd_fetch(module_dir: Path) -> bool:
+    """Run fetch_data.py for a module (download reference datasets)."""
+    fetch_file = module_dir / "fetch_data.py"
+    if not fetch_file.exists():
+        print(f"  ⚠  {module_dir.name}: no fetch_data.py — no reference datasets to download.")
+        return True
+
+    print(f"\n  Fetching data for: {module_dir.name}")
+    print("  " + "─" * 50)
+
+    module_name = f"_autoeia_fetch_{module_dir.name}"
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, fetch_file)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = mod
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        print(f"  ✗  Failed to load fetch_data.py: {e}")
+        traceback.print_exc(file=sys.stdout)
+        return False
+
+    if not hasattr(mod, "fetch"):
+        print(f"  ✗  fetch_data.py must expose a fetch() function with no required arguments.")
+        print(f"     Add:  fetch = your_fetch_function  at the bottom of fetch_data.py")
+        return False
+
+    try:
+        mod.fetch()
+        return True
+    except Exception as e:
+        print(f"  ✗  fetch() raised an exception: {e}")
+        traceback.print_exc(file=sys.stdout)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
@@ -537,6 +573,7 @@ examples:
   python autoeia.py validate modules/shadow-tier-3
   python autoeia.py test modules/shadow-tier-3 --fixture datasets/example_building_midtown.geojson
   python autoeia.py test modules/dac
+  python autoeia.py fetch modules/dac
         """,
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -559,6 +596,10 @@ examples:
         help="Path to a JSON fixture file (overrides test_fixture.json in module directory)",
         default=None,
     )
+
+    # fetch
+    p_fetch = sub.add_parser("fetch", help="Download reference datasets for a module (runs fetch_data.py)")
+    p_fetch.add_argument("module_dir", help="Path to module directory (e.g. modules/dac)")
 
     # new
     p_new = sub.add_parser("new", help="Scaffold a new module from template")
@@ -584,6 +625,11 @@ examples:
         module_dir = Path(args.module_dir)
         fixture = Path(args.fixture) if args.fixture else None
         ok = cmd_test(module_dir, fixture)
+        sys.exit(0 if ok else 1)
+
+    elif args.command == "fetch":
+        module_dir = Path(args.module_dir)
+        ok = cmd_fetch(module_dir)
         sys.exit(0 if ok else 1)
 
     elif args.command == "new":

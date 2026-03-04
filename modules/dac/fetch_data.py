@@ -89,6 +89,10 @@ def _save_indicators_csv(indicators: dict, filepath: Path):
     logger.info(f"  ✓ Saved indicators to {filepath}")
 
 
+# Alias for `autoeia fetch modules/dac`
+fetch = fetch_dac_data
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Download and cache DAC data for AutoEIA"
