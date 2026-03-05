@@ -1,7 +1,7 @@
 """
 AutoEIA Backend - Flask API for workflow execution
 """
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response, stream_with_context
 from flask_cors import CORS
 import json
 import os
@@ -73,6 +73,29 @@ def execute_workflow():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/workflow/stream', methods=['POST'])
+def stream_workflow():
+    """Execute a workflow and stream per-node results as Server-Sent Events."""
+    workflow_data = request.json
+    if not workflow_data or 'nodes' not in workflow_data or 'edges' not in workflow_data:
+        return jsonify({'error': 'Invalid workflow structure'}), 400
+
+    def generate():
+        try:
+            for node_id, result in workflow_engine.execute_streaming(workflow_data):
+                msg = json.dumps({'node_id': node_id, 'result': result})
+                yield 'data: ' + msg + chr(10) + chr(10)
+        except Exception as e:
+            yield 'data: ' + json.dumps({'error': str(e)}) + chr(10) + chr(10)
+        yield 'data: {"done": true}' + chr(10) + chr(10)
+
+    return Response(
+        stream_with_context(generate()),
+        content_type='text/event-stream',
+        headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-cache'},
+    )
 
 
 @app.route('/api/datasets', methods=['GET'])

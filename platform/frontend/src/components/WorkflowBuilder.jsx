@@ -128,40 +128,63 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
       onWorkflowStart()
     }
 
+    const results = {}
+
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/workflow/execute`, {
-        name: workflowName,
-        nodes: nodes,
-        edges: edges,
+      const response = await fetch(`${API_BASE_URL}/api/workflow/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: workflowName, nodes, edges }),
       })
 
-      if (response.data.success) {
-        // Update each node based on its individual result
-        setNodes((nds) =>
-          nds.map((n) => {
-            const r = response.data.results?.[n.id]
-            if (!r) return { ...n, className: '' }
-            return { ...n, className: r.success ? 'node-done' : 'node-error' }
-          })
-        )
-        if (onWorkflowComplete) {
-          onWorkflowComplete(response.data.results, nodes)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('
+')
+        buffer = lines.pop() // keep any incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const msg = JSON.parse(line.slice(6))
+
+          if (msg.done) break
+
+          if (msg.error) {
+            setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-error' })))
+            alert(`Workflow error: ${msg.error}`)
+            if (onWorkflowComplete) onWorkflowComplete(null, nodes)
+            return
+          }
+
+          const { node_id, result } = msg
+          results[node_id] = result
+
+          // Update this node immediately as it completes
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === node_id
+                ? { ...n, className: result.success ? 'node-done' : 'node-error' }
+                : n
+            )
+          )
         }
-      } else {
-        setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-error' })))
-        alert(`Workflow execution failed: ${response.data.error || 'Check backend logs'}`)
-        if (onWorkflowComplete) {
-          onWorkflowComplete(null, nodes)
-        }
+      }
+
+      if (onWorkflowComplete) {
+        onWorkflowComplete(results, nodes)
       }
     } catch (error) {
       setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-error' })))
       console.error('Workflow execution error:', error)
-      const errorMessage = error.response?.data?.error || error.message
-      alert(`Error executing workflow: ${errorMessage}`)
-      if (onWorkflowComplete) {
-        onWorkflowComplete(null, nodes)
-      }
+      alert(`Error executing workflow: ${error.message}`)
+      if (onWorkflowComplete) onWorkflowComplete(null, nodes)
     }
   }
 

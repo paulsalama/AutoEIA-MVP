@@ -131,6 +131,36 @@ class WorkflowEngine:
 
         return inputs
 
+
+    def execute_streaming(self, workflow: dict):
+        """Execute workflow, yielding (node_id, result) as each node completes."""
+        nodes = workflow.get('nodes', [])
+        edges = workflow.get('edges', [])
+        execution_order = self._topological_sort(nodes, edges)
+        nodes_by_id = {n['id']: n for n in nodes}
+        node_outputs = {}
+
+        for node_id in execution_order:
+            node = self._get_node_by_id(nodes, node_id)
+            if not node:
+                continue
+            try:
+                module_data = node.get('data', {}).get('moduleData', {})
+                module_name = module_data.get('name')
+                if not module_name:
+                    yield node_id, {'success': False, 'error': 'No module name specified'}
+                    continue
+
+                inputs = self._gather_inputs(node_id, edges, node_outputs, nodes_by_id)
+                if 'configuredInputs' in node.get('data', {}):
+                    inputs.update(node['data']['configuredInputs'])
+
+                output = self.module_loader.execute_module(module_name, inputs)
+                node_outputs[node_id] = {**inputs, **output}
+                yield node_id, {'success': True, 'module': module_name, 'output': output}
+            except Exception as e:
+                yield node_id, {'success': False, 'error': str(e)}
+
     def validate_workflow(self, workflow: Dict) -> Dict:
         """Validate a workflow before execution"""
         errors = []
