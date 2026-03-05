@@ -48,8 +48,9 @@ class WorkflowEngine:
                 # Execute module
                 output = self.module_loader.execute_module(module_name, inputs)
 
-                # Store outputs for downstream nodes
-                node_outputs[node_id] = output
+                # Store merged inputs+outputs for downstream nodes
+                # (inputs flow through so building_geojson etc. propagate to Tier 3+)
+                node_outputs[node_id] = {**inputs, **output}
                 results[node_id] = {
                     'success': True,
                     'module': module_name,
