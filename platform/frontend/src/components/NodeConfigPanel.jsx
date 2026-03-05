@@ -25,6 +25,9 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose }) {
     return { requiredInputs: required, optionalInputs: optional }
   }, [moduleData])
 
+  const missingRequired = Object.keys(requiredInputs).filter((k) => !configuredInputs[k])
+  const isReady = missingRequired.length === 0
+
   // Auto-populate fields based on jurisdiction selection
   useEffect(() => {
     const jurisdiction = configuredInputs.jurisdiction
@@ -77,6 +80,9 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose }) {
     <div className="node-config-panel">
       <div className="config-header">
         <h3>{moduleData.display_name || 'Configure Node'}</h3>
+        <span className={isReady ? 'config-status config-status--ready' : 'config-status config-status--missing'}>
+          {isReady ? '✓ Ready' : missingRequired.length + ' required'}
+        </span>
         <button onClick={onClose} className="close-btn">&times;</button>
       </div>
 

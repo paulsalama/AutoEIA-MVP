@@ -10,8 +10,8 @@
 
 .config-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #e5e7eb;
   background: #f9fafb;
@@ -25,6 +25,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .close-btn {
@@ -41,6 +43,7 @@
   cursor: pointer;
   transition: background-color 0.2s;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .close-btn:hover {
@@ -137,4 +140,23 @@
   color: #6b7280;
   border-radius: 4px;
   font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.config-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.config-status--ready {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.config-status--missing {
+  background: #fef3c7;
+  color: #92400e;
 }

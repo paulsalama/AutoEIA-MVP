@@ -20,6 +20,7 @@ class WorkflowEngine:
         execution_order = self._topological_sort(nodes, edges)
 
         # Execute nodes in order
+        nodes_by_id = {n['id']: n for n in nodes}
         results = {}
         node_outputs = {}
 
@@ -38,7 +39,7 @@ class WorkflowEngine:
                     continue
 
                 # Gather inputs from connected nodes
-                inputs = self._gather_inputs(node_id, edges, node_outputs)
+                inputs = self._gather_inputs(node_id, edges, node_outputs, nodes_by_id)
 
                 # Add any configured inputs from the node
                 if 'configuredInputs' in node.get('data', {}):
@@ -103,19 +104,29 @@ class WorkflowEngine:
                 return node
         return None
 
-    def _gather_inputs(self, node_id: str, edges: List[Dict], node_outputs: Dict) -> Dict:
-        """Gather inputs for a node from connected upstream nodes"""
+    def _gather_inputs(self, node_id: str, edges: List[Dict], node_outputs: Dict, nodes_by_id: Dict = None) -> Dict:
+        """Gather inputs for a node from connected upstream nodes.
+
+        Priority (lowest to highest):
+          1. Upstream node configuredInputs  — so building_geojson etc. flow downstream
+          2. Upstream node execution outputs  — override configuredInputs of same key
+          (3. Own configuredInputs applied in execute() after this returns — highest priority)
+        """
         inputs = {}
 
-        # Find all edges that target this node
         for edge in edges:
             if edge['target'] == node_id:
                 source_id = edge['source']
+                # 1. Propagate upstream configuredInputs (e.g. building_geojson, building_height_ft)
+                if nodes_by_id:
+                    src_configured = (nodes_by_id.get(source_id, {})
+                                      .get('data', {}).get('configuredInputs') or {})
+                    inputs.update(src_configured)
+                # 2. Upstream outputs take precedence over its inputs
                 if source_id in node_outputs:
-                    # Merge outputs from source node
-                    source_output = node_outputs[source_id]
-                    if isinstance(source_output, dict):
-                        inputs.update(source_output)
+                    src_output = node_outputs[source_id]
+                    if isinstance(src_output, dict):
+                        inputs.update(src_output)
 
         return inputs
 

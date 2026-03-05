@@ -246,6 +246,7 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           onNodeClick={onNodeClick}
           onDrop={onDrop}
           onDragOver={onDragOver}
+          deleteKeyCode={["Delete", "Backspace"]}
           fitView
         >
           <Controls />
