@@ -1,0 +1,378 @@
+{
+  "name": "Shadows Tier 1-3",
+  "nodes": [
+    {
+      "id": "shadow_tier1_screening-1772748643104",
+      "type": "default",
+      "position": {
+        "x": 190,
+        "y": 258.7999954223633
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "🔍 Shadow Tier 1: Preliminary Screening",
+        "moduleData": {
+          "category": "shadows",
+          "description": "Initial proximity analysis: is a detailed shadow study warranted? Buffers the building footprint by 4.3x height (CEQR longest-shadow factor) and checks for sensitive sites within the study area.",
+          "display_name": "Shadow Tier 1: Preliminary Screening",
+          "emoji": "🔍",
+          "inputs": {
+            "buffer_multiplier": {
+              "default": 4.3,
+              "description": "Shadow radius multiplier (CEQR NYC default: 4.3). Override only if needed.",
+              "jurisdiction_defaults": {
+                "NYC": 4.3,
+                "generic": 4
+              },
+              "optional": true,
+              "type": "number"
+            },
+            "building_geojson": {
+              "description": "Building footprint geometry in GeoJSON format",
+              "optional": false,
+              "type": "geojson"
+            },
+            "building_height_ft": {
+              "description": "Building height in feet including all rooftop equipment",
+              "optional": false,
+              "type": "number"
+            },
+            "jurisdiction": {
+              "description": "Jurisdiction. NYC uses CEQR 4.3x buffer multiplier.",
+              "enum": [
+                "NYC",
+                "generic"
+              ],
+              "optional": false,
+              "type": "enum"
+            },
+            "sensitive_sites": {
+              "description": "Sensitive sites dataset. If omitted, uses default NYC Parks dataset.",
+              "optional": true,
+              "type": "geojson"
+            }
+          },
+          "jurisdiction": [
+            "NYC",
+            "generic"
+          ],
+          "name": "shadow_tier1_screening",
+          "outputs": {
+            "affected_sites": {
+              "description": "GeoJSON of sites within shadow radius",
+              "type": "geojson"
+            },
+            "affected_sites_count": {
+              "description": "Number of sensitive sites within shadow radius",
+              "type": "number"
+            },
+            "shadow_buffer": {
+              "description": "Buffer zone representing the longest-shadow study area",
+              "type": "geojson"
+            },
+            "summary_report": {
+              "description": "Summary of screening results",
+              "type": "text"
+            },
+            "triggered": {
+              "description": "True if any sensitive sites fall within the shadow study area (Tier 2 required)",
+              "type": "boolean"
+            },
+            "visualization": {
+              "description": "Interactive map showing buffer and intersected sites",
+              "type": "html"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-1",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-1\\shadow_tier1_screening.py"
+        },
+        "configuredInputs": {
+          "building_geojson": {
+            "type": "FeatureCollection",
+            "features": [
+              {
+                "type": "Feature",
+                "geometry": {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        -73.985758,
+                        40.757247
+                      ],
+                      [
+                        -73.984882,
+                        40.756879
+                      ],
+                      [
+                        -73.984242,
+                        40.757753
+                      ],
+                      [
+                        -73.985118,
+                        40.758121
+                      ],
+                      [
+                        -73.985758,
+                        40.757247
+                      ]
+                    ]
+                  ]
+                },
+                "properties": {
+                  "name": "Example Tall Tower",
+                  "description": "High-rise tower near Bryant Park, Midtown Manhattan — footprint aligned with Manhattan street grid (~29° from true north)",
+                  "address": "Midtown Manhattan, NYC",
+                  "suggested_height_ft": 800,
+                  "footprint_area_sqft": 43560,
+                  "stories": 60
+                }
+              }
+            ]
+          },
+          "building_height_ft": 650,
+          "jurisdiction": "NYC",
+          "buffer_multiplier": 4.3
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 65,
+      "className": "node-done",
+      "selected": true,
+      "dragging": false
+    },
+    {
+      "id": "shadow_tier2_directional-1772748645309",
+      "type": "default",
+      "position": {
+        "x": 488.9829110428194,
+        "y": 251.92126419745995
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "🧭 Shadow Tier 2: Directional Screening",
+        "moduleData": {
+          "category": "shadows",
+          "description": "CEQR Tier 2 directional screen. Eliminates sensitive resources in the triangular no-shadow zone south of the building (±108° from true north). Remaining sites proceed to Tier 3.",
+          "display_name": "Shadow Tier 2: Directional Screening",
+          "emoji": "🧭",
+          "inputs": {
+            "building_geojson": {
+              "description": "Building footprint geometry in GeoJSON format",
+              "optional": false,
+              "type": "geojson"
+            },
+            "building_height_ft": {
+              "description": "Building height in feet",
+              "optional": false,
+              "type": "number"
+            },
+            "jurisdiction": {
+              "description": "Jurisdiction for analysis. NYC uses CEQR ±108° threshold.",
+              "enum": [
+                "NYC",
+                "generic"
+              ],
+              "optional": false,
+              "type": "enum"
+            },
+            "sensitive_sites": {
+              "description": "Sensitive sites GeoJSON. If omitted, uses default NYC Parks dataset.",
+              "optional": true,
+              "type": "geojson"
+            }
+          },
+          "jurisdiction": [
+            "NYC",
+            "generic"
+          ],
+          "name": "shadow_tier2_directional",
+          "outputs": {
+            "no_shadow_zone": {
+              "description": "The triangular zone south of the building that can never receive shadow",
+              "type": "geojson"
+            },
+            "sites_eliminated": {
+              "description": "Sensitive sites ruled out by Tier 2 directional screen",
+              "type": "geojson"
+            },
+            "sites_requiring_tier3": {
+              "description": "Sensitive sites that could potentially receive shadow and require Tier 3 analysis",
+              "type": "geojson"
+            },
+            "summary_report": {
+              "description": "Summary of Tier 2 directional screening results",
+              "type": "text"
+            },
+            "triggered": {
+              "description": "True if any sensitive sites remain after Tier 2 screening (Tier 3 required)",
+              "type": "boolean"
+            },
+            "visualization": {
+              "description": "Interactive map showing building, no-shadow zone, and site classifications",
+              "type": "html"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-2",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-2\\shadow_tier2_directional.py"
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 65,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 488.9829110428194,
+        "y": 251.92126419745995
+      },
+      "dragging": false,
+      "className": "node-done"
+    },
+    {
+      "id": "shadow_tier3_projection-1772748654197",
+      "type": "default",
+      "position": {
+        "x": 750.7070895916988,
+        "y": 251.55797130079748
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "☀️ Shadow Tier 3: Shadow Projection",
+        "moduleData": {
+          "category": "shadows",
+          "description": "CEQR Tier 3 screening: accurate 3D shadow projection using pysolar ephemeris and UTM geometry. Analyzes representative days within the 1.5h-after-sunrise to 1.5h-before-sunset window (EST, no DST). Determines if shadows reach sensitive resources.",
+          "display_name": "Shadow Tier 3: Shadow Projection",
+          "emoji": "☀️",
+          "inputs": {
+            "analysis_dates": {
+              "description": "Dates for shadow analysis (YYYY-MM-DD). Defaults to CEQR representative days.",
+              "jurisdiction_defaults": {
+                "NYC": [
+                  "2024-12-21",
+                  "2024-03-21",
+                  "2024-05-06",
+                  "2024-06-21"
+                ],
+                "generic": [
+                  "2024-12-21",
+                  "2024-03-21",
+                  "2024-06-21"
+                ]
+              },
+              "optional": true,
+              "type": "array"
+            },
+            "building_geojson": {
+              "description": "Building footprint geometry in GeoJSON format",
+              "optional": false,
+              "type": "geojson"
+            },
+            "building_height_ft": {
+              "description": "Building height in feet including all rooftop equipment",
+              "optional": false,
+              "type": "number"
+            },
+            "jurisdiction": {
+              "description": "Jurisdiction determines default analysis dates. NYC uses CEQR representative days.",
+              "enum": [
+                "NYC",
+                "generic"
+              ],
+              "optional": false,
+              "type": "enum"
+            },
+            "sensitive_sites": {
+              "description": "Sensitive sites to check for shadow impacts. If omitted, uses default NYC Parks dataset.",
+              "optional": true,
+              "type": "geojson"
+            }
+          },
+          "jurisdiction": [
+            "NYC",
+            "generic"
+          ],
+          "name": "shadow_tier3_projection",
+          "outputs": {
+            "shadow_polygons": {
+              "description": "Shadow polygon for each analysis time snapshot",
+              "type": "geojson"
+            },
+            "sites_affected": {
+              "description": "Sensitive sites that receive shadow, with enter/exit times and duration per analysis day",
+              "type": "object"
+            },
+            "summary_report": {
+              "description": "Detailed report per CEQR methodology",
+              "type": "text"
+            },
+            "visualization": {
+              "description": "Interactive map showing shadow sweeps for each analysis day with sensitive sites",
+              "type": "html"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-3",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-3\\shadow_tier3_projection.py"
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 65,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 750.7070895916988,
+        "y": 251.55797130079748
+      },
+      "dragging": false,
+      "className": "node-done"
+    }
+  ],
+  "edges": [
+    {
+      "source": "shadow_tier1_screening-1772748643104",
+      "sourceHandle": null,
+      "target": "shadow_tier2_directional-1772748645309",
+      "targetHandle": null,
+      "type": "smoothstep",
+      "animated": true,
+      "markerEnd": {
+        "type": "arrowclosed"
+      },
+      "id": "reactflow__edge-shadow_tier1_screening-1772748643104-shadow_tier2_directional-1772748645309"
+    },
+    {
+      "source": "shadow_tier2_directional-1772748645309",
+      "sourceHandle": null,
+      "target": "shadow_tier3_projection-1772748654197",
+      "targetHandle": null,
+      "type": "smoothstep",
+      "animated": true,
+      "markerEnd": {
+        "type": "arrowclosed"
+      },
+      "id": "reactflow__edge-shadow_tier2_directional-1772748645309-shadow_tier3_projection-1772748654197"
+    }
+  ],
+  "createdAt": "2026-03-05T22:12:29.675Z"
+}
