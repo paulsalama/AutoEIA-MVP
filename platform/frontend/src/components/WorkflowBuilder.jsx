@@ -7,11 +7,9 @@ import ReactFlow, {
   addEdge,
   MarkerType,
 } from 'reactflow'
+import axios from 'axios'
 import 'reactflow/dist/style.css'
 import './WorkflowBuilder.css'
-import ModuleNode from './ModuleNode'
-
-const nodeTypes = { module: ModuleNode }
 
 const initialNodes = []
 const initialEdges = []
@@ -49,23 +47,22 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
 
   const onConnect = useCallback(
     (params) => {
-      // Type-safe: block if source output type != target input type
-      const sourceNode = nodes.find((n) => n.id === params.source)
-      const targetNode = nodes.find((n) => n.id === params.target)
-      if (sourceNode && targetNode && params.sourceHandle && params.targetHandle) {
-        const outType = sourceNode.data?.moduleData?.outputs?.[params.sourceHandle]?.type
-        const inType = targetNode.data?.moduleData?.inputs?.[params.targetHandle]?.type
-        if (outType && inType && outType !== inType) return
-      }
-      setNodes((nds) => nds.map((n) => ({ ...n, className: '' })))
+      setNodes((nds) => nds.map((n) => ({ ...n, className: '' })))  // clear run states on new connection
       setEdges((eds) =>
         addEdge(
-          { ...params, type: 'smoothstep', animated: true, markerEnd: { type: MarkerType.ArrowClosed } },
+          {
+            ...params,
+            type: 'smoothstep',
+            animated: true,
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+            },
+          },
           eds
         )
       )
     },
-    [nodes, setEdges, setNodes]
+    [setEdges, setNodes]
   )
 
   const onNodeClick = useCallback(
@@ -91,9 +88,21 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
 
       const newNode = {
         id: `${moduleData.name}-${Date.now()}`,
-        type: 'module',
+        type: 'default',
         position,
-        data: { moduleData, configuredInputs: {} },
+        sourcePosition: 'right',
+        targetPosition: 'left',
+        data: {
+          label: (moduleData.emoji ? moduleData.emoji + ' ' : '') + moduleData.display_name,
+          moduleData: moduleData,
+        },
+        style: {
+          background: '#fff',
+          border: '2px solid #667eea',
+          borderRadius: '8px',
+          padding: '10px',
+          minWidth: '200px',
+        },
       }
 
       setNodes((nds) => nds.concat(newNode))
@@ -206,10 +215,7 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
       try {
         const workflow = JSON.parse(e.target.result)
         setWorkflowName(workflow.name || 'Loaded Workflow')
-        const upgradedNodes = (workflow.nodes || []).map((n) =>
-          n.type === 'default' ? { ...n, type: 'module', style: undefined } : n
-        )
-        setNodes(upgradedNodes)
+        setNodes(workflow.nodes || [])
         setEdges(workflow.edges || [])
       } catch (error) {
         alert('Error loading workflow file')
@@ -262,7 +268,6 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           onNodeClick={onNodeClick}
           onDrop={onDrop}
           onDragOver={onDragOver}
-          nodeTypes={nodeTypes}
           deleteKeyCode={["Delete", "Backspace"]}
           fitView
         >
