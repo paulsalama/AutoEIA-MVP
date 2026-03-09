@@ -53,7 +53,7 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           {
             ...params,
             type: 'smoothstep',
-            animated: true,
+            animated: false,
             markerEnd: {
               type: MarkerType.ArrowClosed,
             },
@@ -121,8 +121,8 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
       return
     }
 
-    // Mark all nodes as running
     setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-running' })))
+    setEdges((eds) => eds.map((e) => ({ ...e, animated: true })))
 
     if (onWorkflowStart) {
       onWorkflowStart()
@@ -156,6 +156,7 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           if (msg.done) break
 
           if (msg.error) {
+            setEdges((eds) => eds.map((e) => ({ ...e, animated: false })))
             setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-error' })))
             alert(`Workflow error: ${msg.error}`)
             if (onWorkflowComplete) onWorkflowComplete(null, nodes)
@@ -176,10 +177,12 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
         }
       }
 
+      setEdges((eds) => eds.map((e) => ({ ...e, animated: false })))
       if (onWorkflowComplete) {
         onWorkflowComplete(results, nodes)
       }
     } catch (error) {
+      setEdges((eds) => eds.map((e) => ({ ...e, animated: false })))
       setNodes((nds) => nds.map((n) => ({ ...n, className: 'node-error' })))
       console.error('Workflow execution error:', error)
       alert(`Error executing workflow: ${error.message}`)
