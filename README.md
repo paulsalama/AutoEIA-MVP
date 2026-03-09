@@ -99,6 +99,30 @@ AutoEIA/
 
 ---
 
+## Roadmap
+
+### Near-term platform improvements
+- **Typed I/O ports on nodes** — named, color-coded input/output handles rendered from `metadata.json`, enabling visual data-flow inspection
+- **Edge inspection** — click a connection to see what data is flowing between modules
+- **Conditional branching** — nodes that route based on upstream output values (e.g., skip Tier 3 if Tier 2 eliminates all sites)
+- **Workflow templates** — one-click load for common analysis chains (CEQR shadow, traffic, combined)
+
+### Additional modules (planned)
+- **Air quality** — dispersion screening, receptor analysis
+- **Noise impact** — construction and operational noise
+- **Water resources** — stormwater, floodplain proximity
+- **Hazardous materials** — Phase I screening
+- **Socioeconomic** — displacement risk, EJ burden scoring
+
+### Longer-term
+- **Module marketplace** — publish and discover community-contributed modules
+- **LLM-assisted module generation** — provide a technical manual chapter, get a scaffolded module
+- **PDF/Word report export** — compile results into an EIS-ready document
+- **Multi-user workflows** — share and collaborate on workflow configurations
+
+
+---
+
 ## License
 
 TBD
