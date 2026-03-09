@@ -127,3 +127,71 @@
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+
+/* Inherited inputs section */
+.inherited-inputs {
+  margin-bottom: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.inherited-toggle {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: #f9fafb;
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.inherited-toggle:hover { background: #f3f4f6; }
+
+.inherited-body {
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inherited-section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0.4rem 0 0.2rem;
+}
+
+.inherited-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  padding: 2px 0;
+}
+
+.inherited-key {
+  color: #374151;
+  font-weight: 500;
+  flex-shrink: 0;
+  min-width: 120px;
+}
+
+.inherited-val {
+  color: #6b7280;
+  font-family: monospace;
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inherited-upstream .inherited-key { color: #2563eb; }
+.inherited-configured .inherited-key { color: #059669; }

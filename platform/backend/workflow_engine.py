@@ -132,6 +132,20 @@ class WorkflowEngine:
         return inputs
 
 
+
+    def _summarize_inputs(self, inputs: dict) -> dict:
+        """Summarize large input values for display (keeps SSE small)."""
+        out = {}
+        for k, v in inputs.items():
+            if isinstance(v, dict) and v.get('type') in ('FeatureCollection', 'Feature'):
+                count = len(v.get('features', [])) if v.get('type') == 'FeatureCollection' else 1
+                out[k] = f'[GeoJSON: {count} feature{"s" if count != 1 else ""}]'
+            elif isinstance(v, str) and len(v) > 300:
+                out[k] = f'[{len(v):,} chars]'
+            else:
+                out[k] = v
+        return out
+
     def execute_streaming(self, workflow: dict):
         """Execute workflow, yielding (node_id, result) as each node completes."""
         nodes = workflow.get('nodes', [])
@@ -157,7 +171,7 @@ class WorkflowEngine:
 
                 output = self.module_loader.execute_module(module_name, inputs)
                 node_outputs[node_id] = {**inputs, **output}
-                yield node_id, {'success': True, 'module': module_name, 'output': output}
+                yield node_id, {'success': True, 'module': module_name, 'output': output, 'inputs_used': self._summarize_inputs(inputs)}
             except Exception as e:
                 yield node_id, {'success': False, 'error': str(e)}
 

@@ -16,6 +16,12 @@ function App() {
   const handleCloseConfigPanel = useCallback(() => setSelectedNode(null), [])
   const handleCloseResultsPanel = useCallback(() => setWorkflowResults(null), [])
 
+  const handleDeleteNode = useCallback((nodeId) => {
+    if (workflowBuilderRef.current?.deleteNode) {
+      workflowBuilderRef.current.deleteNode(nodeId)
+    }
+  }, [])
+
   const handleWorkflowStart = useCallback(() => {
     setIsExecuting(true)
     setWorkflowResults(null)
@@ -46,12 +52,14 @@ function App() {
       results={workflowResults}
       nodes={workflowNodes}
       onClose={handleCloseResultsPanel}
+      selectedNode={selectedNode}
     />
   ) : selectedNode ? (
     <NodeConfigPanel
       selectedNode={selectedNode}
       onUpdateNodeConfig={handleUpdateNodeConfig}
       onClose={handleCloseConfigPanel}
+      onDeleteNode={handleDeleteNode}
     />
   ) : null
 

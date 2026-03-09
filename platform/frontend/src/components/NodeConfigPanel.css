@@ -160,3 +160,24 @@
   background: #fef3c7;
   color: #92400e;
 }
+
+.delete-btn {
+  background: transparent;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  color: #ef4444;
+  font-size: 1rem;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: auto;
+  transition: all 0.15s;
+}
+
+.delete-btn:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+}

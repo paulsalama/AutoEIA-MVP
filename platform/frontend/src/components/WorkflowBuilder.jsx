@@ -26,6 +26,10 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
 
   // Expose updateNodeConfig to parent via ref
   useImperativeHandle(ref, () => ({
+deleteNode: (nodeId) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId))
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
+    },
     updateNodeConfig: (nodeId, configuredInputs) => {
       setNodes((nds) =>
         nds.map((node) => {
@@ -165,6 +169,7 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
 
           const { node_id, result } = msg
           results[node_id] = result
+          if (result.inputs_used) results[node_id].inputs_used = result.inputs_used
 
           // Update this node immediately as it completes
           setNodes((nds) =>
@@ -271,7 +276,7 @@ const WorkflowBuilder = forwardRef(function WorkflowBuilder(
           onNodeClick={onNodeClick}
           onDrop={onDrop}
           onDragOver={onDragOver}
-          deleteKeyCode={["Delete", "Backspace"]}
+          deleteKeyCode={["Delete", "Backspace"]}  
           fitView
         >
           <Controls />

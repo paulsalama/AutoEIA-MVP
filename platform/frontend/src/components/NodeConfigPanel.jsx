@@ -2,7 +2,7 @@ import { useMemo, useEffect } from 'react'
 import FormField from './FormField'
 import './NodeConfigPanel.css'
 
-function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose }) {
+function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNode }) {
   if (!selectedNode) return null
 
   const moduleData = selectedNode.data?.moduleData
@@ -83,6 +83,7 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose }) {
         <span className={isReady ? 'config-status config-status--ready' : 'config-status config-status--missing'}>
           {isReady ? '✓ Ready' : missingRequired.length + ' required'}
         </span>
+        <button onClick={() => { onDeleteNode(selectedNode.id); onClose() }} className="delete-btn" title="Remove from canvas">&#x1F5D1;</button>
         <button onClick={onClose} className="close-btn">&times;</button>
       </div>
 
