@@ -10,17 +10,11 @@ function App() {
   const [workflowResults, setWorkflowResults] = useState(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [workflowNodes, setWorkflowNodes] = useState([])
-
-  // Ref to access WorkflowBuilder's updateNodeConfig function
   const workflowBuilderRef = useRef(null)
 
-  const handleNodeSelect = useCallback((node) => {
-    setSelectedNode(node)
-  }, [])
-
-  const handleCloseConfigPanel = useCallback(() => {
-    setSelectedNode(null)
-  }, [])
+  const handleNodeSelect = useCallback((node) => setSelectedNode(node), [])
+  const handleCloseConfigPanel = useCallback(() => setSelectedNode(null), [])
+  const handleCloseResultsPanel = useCallback(() => setWorkflowResults(null), [])
 
   const handleWorkflowStart = useCallback(() => {
     setIsExecuting(true)
@@ -31,30 +25,35 @@ function App() {
     setWorkflowResults(results)
     setWorkflowNodes(nodes)
     setIsExecuting(false)
-  }, [])
-
-  const handleCloseResultsPanel = useCallback(() => {
-    setWorkflowResults(null)
+    setSelectedNode(null)  // switch right panel to results
   }, [])
 
   const handleUpdateNodeConfig = useCallback((nodeId, configuredInputs) => {
     if (workflowBuilderRef.current?.updateNodeConfig) {
       workflowBuilderRef.current.updateNodeConfig(nodeId, configuredInputs)
-      // Update selectedNode to reflect changes
       setSelectedNode(prev => {
         if (prev && prev.id === nodeId) {
-          return {
-            ...prev,
-            data: {
-              ...prev.data,
-              configuredInputs
-            }
-          }
+          return { ...prev, data: { ...prev.data, configuredInputs } }
         }
         return prev
       })
     }
   }, [])
+
+  // Right panel: results take priority; fall back to node config
+  const rightPanel = workflowResults ? (
+    <OutputVisualizationPanel
+      results={workflowResults}
+      nodes={workflowNodes}
+      onClose={handleCloseResultsPanel}
+    />
+  ) : selectedNode ? (
+    <NodeConfigPanel
+      selectedNode={selectedNode}
+      onUpdateNodeConfig={handleUpdateNodeConfig}
+      onClose={handleCloseConfigPanel}
+    />
+  ) : null
 
   return (
     <div className="app-container">
@@ -62,10 +61,8 @@ function App() {
         <h1>AutoEIA Module Orchestration Platform</h1>
         <p>Visual Workflow Platform for Environmental Impact Analysis</p>
       </header>
-
       <div className="app-main">
         <ModuleSidebar />
-
         <div className="center-area">
           <WorkflowBuilder
             ref={workflowBuilderRef}
@@ -75,23 +72,8 @@ function App() {
             onWorkflowComplete={handleWorkflowComplete}
             isExecuting={isExecuting}
           />
-
-          {workflowResults && (
-            <OutputVisualizationPanel
-              results={workflowResults}
-              nodes={workflowNodes}
-              onClose={handleCloseResultsPanel}
-            />
-          )}
         </div>
-
-        {selectedNode && (
-          <NodeConfigPanel
-            selectedNode={selectedNode}
-            onUpdateNodeConfig={handleUpdateNodeConfig}
-            onClose={handleCloseConfigPanel}
-          />
-        )}
+        {rightPanel}
       </div>
     </div>
   )

@@ -163,10 +163,11 @@
 
 .visualization-iframe {
   width: 100%;
-  height: 500px;
+  height: 520px;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   background: white;
+  display: block;
 }
 
 /* Image output */
@@ -175,4 +176,34 @@
   height: auto;
   border-radius: 6px;
   border: 1px solid #e5e7eb;
+}
+
+/* HTML output header row */
+.output-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.output-label-row .output-label {
+  margin: 0;
+}
+
+.open-tab-btn {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.open-tab-btn:hover {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
 }

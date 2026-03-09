@@ -28,11 +28,21 @@ function OutputRenderer({ output, moduleMetadata }) {
   const renderOutputValue = (key, value, schema) => {
     const type = schema?.type || typeof value
 
-    // Check if it's HTML visualization (starts with < or contains html/body tags)
+    // HTML visualization
     if (typeof value === 'string' && (value.trim().startsWith('<') || value.includes('<!DOCTYPE'))) {
+      const openInTab = () => {
+        const w = window.open()
+        w.document.write(value)
+        w.document.close()
+      }
       return (
         <div className="output-item html-output" key={key}>
-          <h5 className="output-label">{formatLabel(key)}</h5>
+          <div className="output-label-row">
+            <h5 className="output-label">{formatLabel(key)}</h5>
+            <button className="open-tab-btn" onClick={openInTab} title="Open map in new tab">
+              Open full map
+            </button>
+          </div>
           <iframe
             srcDoc={value}
             title={key}
