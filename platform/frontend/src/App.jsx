@@ -10,9 +10,10 @@ function App() {
   const [workflowResults, setWorkflowResults] = useState(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [workflowNodes, setWorkflowNodes] = useState([])
+  const [inheritedKeys, setInheritedKeys] = useState({})
   const workflowBuilderRef = useRef(null)
 
-  const handleNodeSelect = useCallback((node) => setSelectedNode(node), [])
+  const handleNodeSelect = useCallback((node, keys = {}) => { setSelectedNode(node); setInheritedKeys(keys) }, [])
   const handleCloseConfigPanel = useCallback(() => setSelectedNode(null), [])
   const handleCloseResultsPanel = useCallback(() => setWorkflowResults(null), [])
 
@@ -60,6 +61,7 @@ function App() {
       onUpdateNodeConfig={handleUpdateNodeConfig}
       onClose={handleCloseConfigPanel}
       onDeleteNode={handleDeleteNode}
+      inheritedKeys={inheritedKeys}
     />
   ) : null
 

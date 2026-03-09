@@ -181,3 +181,17 @@
   background: #fef2f2;
   border-color: #ef4444;
 }
+
+.inherited-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  padding: 3px 8px;
+  margin-bottom: 6px;
+  font-weight: 500;
+}

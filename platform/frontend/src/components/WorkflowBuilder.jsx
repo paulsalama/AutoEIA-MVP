@@ -16,6 +16,34 @@ const initialEdges = []
 
 const API_BASE_URL = 'http://localhost:8000'
 
+
+// Trace upstream edges recursively to find all keys that will propagate to nodeId
+function computeInheritedKeys(nodeId, nodes, edges) {
+  const result = {}  // key -> source module display name
+  const visited = new Set()
+
+  function traverse(id) {
+    if (visited.has(id)) return
+    visited.add(id)
+    for (const edge of edges) {
+      if (edge.target !== id) continue
+      const src = nodes.find((n) => n.id === edge.source)
+      if (!src) continue
+      const srcName = src.data?.moduleData?.display_name || src.id
+      for (const k of Object.keys(src.data?.moduleData?.outputs || {})) {
+        if (!(k in result)) result[k] = srcName
+      }
+      for (const k of Object.keys(src.data?.configuredInputs || {})) {
+        if (!(k in result)) result[k] = srcName
+      }
+      traverse(edge.source)
+    }
+  }
+
+  traverse(nodeId)
+  return result
+}
+
 const WorkflowBuilder = forwardRef(function WorkflowBuilder(
   { selectedNode, onNodeSelect, onWorkflowStart, onWorkflowComplete, isExecuting },
   ref
@@ -71,9 +99,10 @@ deleteNode: (nodeId) => {
 
   const onNodeClick = useCallback(
     (event, node) => {
-      onNodeSelect(node)
+      const inheritedKeys = computeInheritedKeys(node.id, nodes, edges)
+      onNodeSelect(node, inheritedKeys)
     },
-    [onNodeSelect]
+    [onNodeSelect, nodes, edges]
   )
 
   const onDrop = useCallback(

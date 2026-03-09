@@ -2,11 +2,17 @@ import { useMemo, useEffect } from 'react'
 import FormField from './FormField'
 import './NodeConfigPanel.css'
 
-function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNode }) {
+function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNode, inheritedKeys = {} }) {
   if (!selectedNode) return null
 
   const moduleData = selectedNode.data?.moduleData
   const configuredInputs = selectedNode.data?.configuredInputs || {}
+
+  const renderInheritedBadge = (name) => {
+    const source = inheritedKeys[name]
+    if (!source || configuredInputs[name]) return null
+    return <span className="inherited-badge" title={`Will be provided by: ${source}`}>&#x2192; {source}</span>
+  }
 
   // Separate required and optional inputs
   const { requiredInputs, optionalInputs } = useMemo(() => {
@@ -102,14 +108,18 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNo
           <div className="config-section">
             <h4>Required Inputs</h4>
             {Object.entries(requiredInputs).map(([name, schema]) => (
-              <FormField
-                key={name}
-                name={name}
-                schema={schema}
-                value={configuredInputs[name]}
-                onChange={(value) => handleFieldChange(name, value)}
-                required={true}
-              />
+              <div key={name}>
+                {renderInheritedBadge(name)}
+                {!inheritedKeys[name] && (
+                  <FormField
+                    name={name}
+                    schema={schema}
+                    value={configuredInputs[name]}
+                    onChange={(value) => handleFieldChange(name, value)}
+                    required={true}
+                  />
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -118,14 +128,18 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNo
           <div className="config-section">
             <h4>Optional Inputs</h4>
             {Object.entries(optionalInputs).map(([name, schema]) => (
-              <FormField
-                key={name}
-                name={name}
-                schema={schema}
-                value={configuredInputs[name]}
-                onChange={(value) => handleFieldChange(name, value)}
-                required={false}
-              />
+              <div key={name}>
+                {renderInheritedBadge(name)}
+                {!inheritedKeys[name] && (
+                  <FormField
+                    name={name}
+                    schema={schema}
+                    value={configuredInputs[name]}
+                    onChange={(value) => handleFieldChange(name, value)}
+                    required={false}
+                  />
+                )}
+              </div>
             ))}
           </div>
         )}
