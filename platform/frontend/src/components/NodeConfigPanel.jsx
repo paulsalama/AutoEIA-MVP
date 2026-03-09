@@ -10,7 +10,7 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNo
 
   const renderInheritedBadge = (name) => {
     const source = inheritedKeys[name]
-    if (!source || configuredInputs[name]) return null
+    if (!source) return null
     return <span className="inherited-badge" title={`Will be provided by: ${source}`}>&#x2192; {source}</span>
   }
 
@@ -108,17 +108,15 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNo
           <div className="config-section">
             <h4>Required Inputs</h4>
             {Object.entries(requiredInputs).map(([name, schema]) => (
-              <div key={name}>
+              <div key={name} className="field-with-badge">
+                <FormField
+                  name={name}
+                  schema={schema}
+                  value={configuredInputs[name]}
+                  onChange={(value) => handleFieldChange(name, value)}
+                  required={true}
+                />
                 {renderInheritedBadge(name)}
-                {!inheritedKeys[name] && (
-                  <FormField
-                    name={name}
-                    schema={schema}
-                    value={configuredInputs[name]}
-                    onChange={(value) => handleFieldChange(name, value)}
-                    required={true}
-                  />
-                )}
               </div>
             ))}
           </div>
@@ -128,17 +126,15 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNo
           <div className="config-section">
             <h4>Optional Inputs</h4>
             {Object.entries(optionalInputs).map(([name, schema]) => (
-              <div key={name}>
+              <div key={name} className="field-with-badge">
+                <FormField
+                  name={name}
+                  schema={schema}
+                  value={configuredInputs[name]}
+                  onChange={(value) => handleFieldChange(name, value)}
+                  required={false}
+                />
                 {renderInheritedBadge(name)}
-                {!inheritedKeys[name] && (
-                  <FormField
-                    name={name}
-                    schema={schema}
-                    value={configuredInputs[name]}
-                    onChange={(value) => handleFieldChange(name, value)}
-                    required={false}
-                  />
-                )}
               </div>
             ))}
           </div>

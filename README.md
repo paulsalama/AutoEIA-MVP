@@ -24,6 +24,8 @@ npm run dev
 
 Open http://localhost:3000. Load an example workflow from `workflows/` to get started immediately.
 
+**Windows shortcut:** double-click `start-backend.bat` and `start-frontend.bat` to launch both servers without opening a terminal.
+
 ---
 
 ## Available Modules
