@@ -1,0 +1,84 @@
+{
+  "name": "shadow_context_builder",
+  "display_name": "Shadow Context Builder",
+  "emoji": "🏙️",
+  "description": "Builds a 3D LOD1 massing model of all surrounding buildings from NYC Building Footprints. Required prerequisite for CEQR incremental shadow analysis (Chapter 8, §320): establishes the No-Action context so the project's incremental shadow can be isolated.",
+  "category": "shadows",
+  "jurisdiction": [
+    "NYC"
+  ],
+  "inputs": {
+    "building_geojson": {
+      "type": "geojson",
+      "description": "Project building footprint — used to derive project location if project_location is omitted.",
+      "optional": true
+    },
+    "project_location": {
+      "type": "object",
+      "description": "[lat, lon] of project centroid. Auto-derived from building_geojson if not provided.",
+      "optional": true
+    },
+    "building_height_ft": {
+      "type": "number",
+      "description": "Project height in feet. Used to auto-compute study area radius (4.3× height + 200 ft buffer) if study_area_radius_ft is omitted.",
+      "optional": true
+    },
+    "study_area_radius_ft": {
+      "type": "number",
+      "description": "Radius from project site to load surrounding buildings (feet). Default: 4.3 × building_height_ft + 200 ft.",
+      "optional": true
+    },
+    "project_site_bins": {
+      "type": "object",
+      "description": "List of BINs to exclude — buildings on the project site that will be demolished or replaced.",
+      "optional": true
+    },
+    "project_site_bbls": {
+      "type": "object",
+      "description": "List of BBLs to exclude (alternative to project_site_bins).",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "context_mesh_obj": {
+      "type": "text",
+      "description": "OBJ file content: LOD1 flat-top extrusions of all surrounding buildings. Meters, Z-up, +Y=North, origin at project centroid. Feed into shadow-incremental as no_action_mesh_obj."
+    },
+    "context_geojson": {
+      "type": "geojson",
+      "description": "2D building footprints with height, BIN, and construction year for QA/visualization."
+    },
+    "building_inventory": {
+      "type": "object",
+      "description": "List of all buildings: BIN, height, height source, construction year."
+    },
+    "data_gap_report": {
+      "type": "object",
+      "description": "Flags: buildings with missing height data, post-2014 buildings (no LOD2), freshness note."
+    },
+    "building_count": {
+      "type": "number",
+      "description": "Total buildings loaded into context."
+    },
+    "study_area_radius_ft": {
+      "type": "number",
+      "description": "Radius actually used (feet) — passed through for downstream modules."
+    },
+    "project_location": {
+      "type": "object",
+      "description": "[lat, lon] of project site — passed through for downstream modules."
+    },
+    "visualization": {
+      "type": "html",
+      "description": "Folium map: surrounding buildings colored by height, study area circle, project marker."
+    }
+  },
+  "test_inputs": {
+    "building_height_ft": 400,
+    "study_area_radius_ft": 2000,
+    "project_location": [
+      40.7536,
+      -73.9832
+    ]
+  }
+}
