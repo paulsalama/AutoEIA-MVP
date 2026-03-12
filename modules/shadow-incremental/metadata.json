@@ -1,0 +1,84 @@
+{
+  "name": "shadow_incremental",
+  "display_name": "Shadow Incremental Calculator",
+  "emoji": "📐",
+  "description": "CEQR Chapter 8 incremental shadow analysis. Projects shadows from the No-Action and With-Action scenes (assembled by Shadow Pipeline Builder) and computes only the NEW shadow the project building casts — isolating the project's incremental contribution from existing shadows.",
+  "category": "shadows",
+  "jurisdiction": [
+    "NYC"
+  ],
+  "inputs": {
+    "no_action_mesh_obj": {
+      "type": "text",
+      "description": "No-Action scene OBJ (context buildings only). Inherited from Shadow Pipeline Builder.",
+      "optional": false
+    },
+    "with_action_mesh_obj": {
+      "type": "text",
+      "description": "With-Action scene OBJ (context + project building). Inherited from Shadow Pipeline Builder.",
+      "optional": false
+    },
+    "project_location": {
+      "type": "object",
+      "description": "[lat, lon] of project site. Inherited from Shadow Pipeline Builder.",
+      "optional": false
+    },
+    "analysis_dates": {
+      "type": "object",
+      "description": "ISO date strings to analyze. Inherited from Shadow Pipeline Builder (CEQR standard: Dec 21, Mar 21, May 6, Jun 21).",
+      "optional": false
+    },
+    "analysis_year": {
+      "type": "number",
+      "description": "Calendar year for solar calculations. Inherited from Shadow Pipeline Builder.",
+      "optional": true
+    },
+    "building_height_ft": {
+      "type": "number",
+      "description": "Project height in feet — used for report narrative.",
+      "optional": true
+    },
+    "sensitive_sites_geojson": {
+      "type": "geojson",
+      "description": "Sensitive sites layer for impact assessment. Defaults to NYC DPR parks dataset if not provided.",
+      "optional": true
+    },
+    "analysis_interval_min": {
+      "type": "number",
+      "description": "Time interval between shadow snapshots (minutes). Default: 60 (CEQR standard).",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "incremental_shadows_geojson": {
+      "type": "geojson",
+      "description": "GeoJSON FeatureCollection of incremental shadow polygons (one per datetime). Each feature has date, time_est, solar_altitude_deg, incremental_area_sqft properties."
+    },
+    "affected_sites_geojson": {
+      "type": "geojson",
+      "description": "Sensitive sites that receive any incremental shadow across all analysis days."
+    },
+    "shadow_summary": {
+      "type": "object",
+      "description": "Per-date summary: max incremental shadow area, affected site count, first/last shadow time."
+    },
+    "affected_site_count": {
+      "type": "number",
+      "description": "Total number of sensitive sites receiving incremental shadow."
+    },
+    "summary_report": {
+      "type": "text",
+      "description": "Formatted CEQR Chapter 8 incremental shadow analysis report."
+    },
+    "visualization": {
+      "type": "html",
+      "description": "Folium map: incremental shadow polygons per date (togglable), affected sites highlighted in orange, unaffected in purple."
+    }
+  },
+  "test_inputs": {
+    "project_location": [40.7536, -73.9832],
+    "analysis_dates": ["2026-12-21", "2026-03-21"],
+    "analysis_year": 2026,
+    "building_height_ft": 400
+  }
+}
