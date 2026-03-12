@@ -1,0 +1,110 @@
+{
+  "name": "shadow_pipeline_builder",
+  "display_name": "Shadow Pipeline Builder",
+  "emoji": "🔧",
+  "description": "Takes the project building footprint and the surrounding context mesh (from Shadow Context Builder) and assembles the No-Action and With-Action scenes for CEQR incremental shadow analysis. Also configures CEQR-compliant analysis dates and time windows.",
+  "category": "shadows",
+  "jurisdiction": [
+    "NYC"
+  ],
+  "inputs": {
+    "building_geojson": {
+      "type": "geojson",
+      "description": "Project building footprint (GeoJSON). Used to extrude the project building mesh.",
+      "optional": false
+    },
+    "building_height_ft": {
+      "type": "number",
+      "description": "Project building height in feet.",
+      "optional": false
+    },
+    "project_location": {
+      "type": "object",
+      "description": "[lat, lon] of project centroid. Inherited from Shadow Context Builder. Auto-derived from building_geojson if not provided.",
+      "optional": true
+    },
+    "context_mesh_obj": {
+      "type": "text",
+      "description": "No-Action surrounding building massing (OBJ). Inherited from Shadow Context Builder. If omitted, With-Action scene contains only the project building.",
+      "optional": true
+    },
+    "study_area_radius_ft": {
+      "type": "number",
+      "description": "Study area radius in feet — passed through from Shadow Context Builder.",
+      "optional": true
+    },
+    "analysis_dates": {
+      "type": "object",
+      "description": "List of ISO date strings to analyze (e.g. ['2024-12-21', '2024-03-21']). Defaults to CEQR NYC standard: Dec 21, Mar 21, May 6, Jun 21.",
+      "optional": true
+    },
+    "jurisdiction": {
+      "type": "enum",
+      "options": ["NYC", "generic"],
+      "description": "Jurisdiction for CEQR date/time defaults.",
+      "optional": true,
+      "default": "NYC"
+    }
+  },
+  "outputs": {
+    "project_mesh_obj": {
+      "type": "text",
+      "description": "OBJ of project building alone. Origin at project centroid. Metres, Z-up, +Y=North. Feed into shadow-incremental as project_mesh_obj."
+    },
+    "no_action_mesh_obj": {
+      "type": "text",
+      "description": "No-Action scene OBJ (= context_mesh_obj passthrough). Feed into shadow-incremental."
+    },
+    "with_action_mesh_obj": {
+      "type": "text",
+      "description": "With-Action scene OBJ: context + project building combined. Feed into shadow-incremental."
+    },
+    "project_location": {
+      "type": "object",
+      "description": "[lat, lon] passed through for shadow-incremental."
+    },
+    "building_height_ft": {
+      "type": "number",
+      "description": "Project height in feet — passed through."
+    },
+    "study_area_radius_ft": {
+      "type": "number",
+      "description": "Study area radius in feet — passed through."
+    },
+    "analysis_dates": {
+      "type": "object",
+      "description": "Analysis date strings (CEQR standard or user-specified)."
+    },
+    "analysis_year": {
+      "type": "number",
+      "description": "Calendar year used for solar calculations (current year)."
+    },
+    "visualization": {
+      "type": "html",
+      "description": "Folium map showing the project building footprint with height label."
+    }
+  },
+  "test_inputs": {
+    "building_height_ft": 400,
+    "project_location": [40.7536, -73.9832],
+    "building_geojson": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+              [-73.9840, 40.7530],
+              [-73.9825, 40.7530],
+              [-73.9825, 40.7542],
+              [-73.9840, 40.7542],
+              [-73.9840, 40.7530]
+            ]]
+          },
+          "properties": {}
+        }
+      ]
+    }
+  }
+}
