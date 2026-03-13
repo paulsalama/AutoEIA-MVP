@@ -24,7 +24,7 @@
       "optional": true
     },
     "context_mesh_obj": {
-      "type": "text",
+      "type": "obj",
       "description": "No-Action surrounding building massing (OBJ). Inherited from Shadow Context Builder. If omitted, With-Action scene contains only the project building.",
       "optional": true
     },
@@ -34,8 +34,8 @@
       "optional": true
     },
     "analysis_dates": {
-      "type": "object",
-      "description": "List of ISO date strings to analyze (e.g. ['2024-12-21', '2024-03-21']). Defaults to CEQR NYC standard: Dec 21, Mar 21, May 6, Jun 21.",
+      "type": "array",
+      "description": "List of ISO date strings to analyze (e.g. [\"2026-12-21\", \"2026-03-21\"]). Defaults to CEQR NYC standard: Dec 21, Mar 21, May 6, Jun 21.",
       "optional": true
     },
     "jurisdiction": {

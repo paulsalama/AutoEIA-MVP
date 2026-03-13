@@ -29,12 +29,12 @@
       "optional": true
     },
     "project_site_bins": {
-      "type": "object",
+      "type": "array",
       "description": "List of BINs to exclude — buildings on the project site that will be demolished or replaced.",
       "optional": true
     },
     "project_site_bbls": {
-      "type": "object",
+      "type": "array",
       "description": "List of BBLs to exclude (alternative to project_site_bins).",
       "optional": true
     }

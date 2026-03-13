@@ -9,12 +9,12 @@
   ],
   "inputs": {
     "no_action_mesh_obj": {
-      "type": "text",
+      "type": "obj",
       "description": "No-Action scene OBJ (context buildings only). Inherited from Shadow Pipeline Builder.",
       "optional": false
     },
     "with_action_mesh_obj": {
-      "type": "text",
+      "type": "obj",
       "description": "With-Action scene OBJ (context + project building). Inherited from Shadow Pipeline Builder.",
       "optional": false
     },
@@ -24,7 +24,7 @@
       "optional": false
     },
     "analysis_dates": {
-      "type": "object",
+      "type": "array",
       "description": "ISO date strings to analyze. Inherited from Shadow Pipeline Builder (CEQR standard: Dec 21, Mar 21, May 6, Jun 21).",
       "optional": false
     },

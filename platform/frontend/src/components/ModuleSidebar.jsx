@@ -8,6 +8,7 @@ function ModuleSidebar() {
   const [modules, setModules] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [selectedJurisdiction, setSelectedJurisdiction] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -31,6 +32,7 @@ function ModuleSidebar() {
   }, [])
 
   const categories = ['all', ...new Set(modules.map((m) => m.category))]
+  const jurisdictions = ['all', ...new Set(modules.flatMap((m) => m.jurisdiction || []))]
 
   const filteredModules = modules.filter((module) => {
     const matchesSearch =
@@ -38,7 +40,9 @@ function ModuleSidebar() {
       module.description.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory =
       selectedCategory === 'all' || module.category === selectedCategory
-    return matchesSearch && matchesCategory
+    const matchesJurisdiction =
+      selectedJurisdiction === 'all' || (module.jurisdiction || []).includes(selectedJurisdiction)
+    return matchesSearch && matchesCategory && matchesJurisdiction
   })
 
   const onDragStart = (event, module) => {
@@ -70,6 +74,18 @@ function ModuleSidebar() {
           {categories.map((cat) => (
             <option key={cat} value={cat}>
               {cat.charAt(0).toUpperCase() + cat.slice(1)}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={selectedJurisdiction}
+          onChange={(e) => setSelectedJurisdiction(e.target.value)}
+          className="category-select"
+        >
+          {jurisdictions.map((j) => (
+            <option key={j} value={j}>
+              {j === 'all' ? 'All Jurisdictions' : j}
             </option>
           ))}
         </select>

@@ -81,7 +81,8 @@ function FormField({ name, schema, value, onChange, required }) {
           />
         )
 
-      case 'enum':
+      case 'enum': {
+        const enumOptions = schema.enum ?? schema.options ?? []
         return (
           <select
             value={value ?? ''}
@@ -89,13 +90,14 @@ function FormField({ name, schema, value, onChange, required }) {
             className="form-select"
           >
             <option value="">Select...</option>
-            {schema.enum?.map((option) => (
+            {enumOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
             ))}
           </select>
         )
+      }
 
       case 'boolean':
         return (
