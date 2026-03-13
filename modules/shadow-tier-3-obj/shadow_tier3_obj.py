@@ -52,6 +52,100 @@ ANALYSIS_INTERVAL_MIN = {
 
 
 # ---------------------------------------------------------------------------
+# OBJ metadata auto-detection
+# ---------------------------------------------------------------------------
+
+# Known exporters that default to Y-up in OBJ space
+_Y_UP_EXPORTERS = {'sketchup', 'blender', 'maya', 'cinema 4d', 'c4d'}
+# Known exporters that default to Z-up in OBJ space
+_Z_UP_EXPORTERS = {'3ds max', 'rhino', 'autocad', 'revit', 'archicad'}
+
+
+def detect_obj_metadata(obj_text):
+    """
+    Heuristically detect scale, up-axis, and exporter from OBJ file content.
+
+    Returns a dict:
+        exporter          - software name from comment, or None
+        up_axis_hint      - 'Y' or 'Z' based on exporter convention
+        scale_hint        - float multiplier to convert native units → metres
+        native_unit_hint  - 'meters', 'feet', 'inches', 'cm', or 'unknown'
+        apparent_height_native - max extent along detected up-axis (native units)
+        apparent_height_m      - estimated real height in metres
+        bbox              - {'x': (min,max), 'y': (min,max), 'z': (min,max)}
+    """
+    exporter = None
+    xs, ys, zs = [], [], []
+
+    for line in obj_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('#'):
+            lower = stripped.lower()
+            for name in list(_Z_UP_EXPORTERS) + list(_Y_UP_EXPORTERS):
+                if name in lower:
+                    exporter = name
+                    break
+        elif stripped.startswith('v '):
+            parts = stripped.split()
+            try:
+                xs.append(float(parts[1]))
+                ys.append(float(parts[2]))
+                zs.append(float(parts[3]))
+            except (IndexError, ValueError):
+                continue
+
+    # Up-axis: exporter-based, defaulting to Z
+    if exporter and any(e in exporter for e in _Y_UP_EXPORTERS):
+        up_axis_hint = 'Y'
+    else:
+        up_axis_hint = 'Z'
+
+    if not xs:
+        return {
+            'exporter': exporter, 'up_axis_hint': up_axis_hint,
+            'scale_hint': 1.0, 'native_unit_hint': 'unknown',
+            'apparent_height_native': 0, 'apparent_height_m': 0, 'bbox': {},
+        }
+
+    bbox = {
+        'x': (round(min(xs), 2), round(max(xs), 2)),
+        'y': (round(min(ys), 2), round(max(ys), 2)),
+        'z': (round(min(zs), 2), round(max(zs), 2)),
+    }
+
+    # Apparent height = range of up-axis values
+    up_vals = zs if up_axis_hint == 'Z' else ys
+    apparent_height = max(up_vals) - min(up_vals)
+
+    # Scale heuristic based on apparent height.
+    # Reference: Empire State Building = 443m / 1454ft / 17448in / 44300cm
+    #   >30000 → cm  (443m × 100)
+    #   5000–30000 → inches  (443m / 0.0254 = 17448)
+    #   600–5000 → feet  (443m / 0.3048 = 1454)
+    #   3–600 → meters
+    if apparent_height > 30_000:
+        scale_hint, native_unit_hint = 0.01,    'cm'
+    elif apparent_height > 5_000:
+        scale_hint, native_unit_hint = 0.0254,  'inches'
+    elif apparent_height > 600:
+        scale_hint, native_unit_hint = 0.3048,  'feet'
+    elif apparent_height > 3:
+        scale_hint, native_unit_hint = 1.0,     'meters'
+    else:
+        scale_hint, native_unit_hint = 1.0,     'unknown'
+
+    return {
+        'exporter': exporter,
+        'up_axis_hint': up_axis_hint,
+        'scale_hint': scale_hint,
+        'native_unit_hint': native_unit_hint,
+        'apparent_height_native': round(apparent_height, 2),
+        'apparent_height_m': round(apparent_height * scale_hint, 1),
+        'bbox': bbox,
+    }
+
+
+# ---------------------------------------------------------------------------
 # OBJ parsing + georeferencing
 # ---------------------------------------------------------------------------
 
@@ -369,13 +463,16 @@ def execute(inputs):
     sensitive_sites_input = inputs.get('sensitive_sites') or inputs.get('sites_requiring_tier3')
     analysis_dates = inputs.get('analysis_dates')
     model_rotation_deg = float(inputs.get('model_rotation_deg') or 0.0)
-    model_up_axis = inputs.get('model_up_axis', 'Z').upper()
-    model_scale = float(inputs.get('model_scale') or 1.0)
 
     if not building_geojson:
         raise ValueError("building_geojson is required")
     if not building_obj:
         raise ValueError("building_obj is required (OBJ file content as string)")
+
+    # Auto-detect scale + up-axis from OBJ content; user values take precedence
+    obj_meta = detect_obj_metadata(building_obj)
+    model_up_axis = (inputs.get('model_up_axis') or obj_meta['up_axis_hint']).upper()
+    model_scale = float(inputs.get('model_scale') or obj_meta['scale_hint'])
 
     if isinstance(building_geojson, str):
         building_geojson = json.loads(building_geojson)
@@ -497,6 +594,20 @@ def execute(inputs):
         'sites_affected': sites_affected,
         'summary_report': report,
         'visualization': viz,
+        'model_metadata': {
+            'exporter': obj_meta['exporter'],
+            'up_axis_used': model_up_axis,
+            'scale_used': model_scale,
+            'native_unit_hint': obj_meta['native_unit_hint'],
+            'apparent_height_native': obj_meta['apparent_height_native'],
+            'apparent_height_m': round(max_height_m, 1),
+            'bbox_native': obj_meta['bbox'],
+            'note': (
+                'scale and up_axis were auto-detected'
+                if not inputs.get('model_scale') and not inputs.get('model_up_axis')
+                else 'user-specified values used'
+            ),
+        },
     }
 
 

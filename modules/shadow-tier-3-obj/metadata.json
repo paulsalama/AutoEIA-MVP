@@ -61,6 +61,10 @@
     "visualization": {
       "type": "html",
       "description": "Interactive map showing shadow sweeps per analysis day with sensitive site impact"
+    },
+    "model_metadata": {
+      "type": "object",
+      "description": "Auto-detected model properties: exporter, up_axis_used, scale_used, native_unit_hint, apparent_height_m. Useful for verifying the model was interpreted correctly."
     }
   }
 }

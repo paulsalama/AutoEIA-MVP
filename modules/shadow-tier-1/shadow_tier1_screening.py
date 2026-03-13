@@ -153,8 +153,8 @@ Tier 2 Analysis Triggered: {'YES' if triggered else 'NO'}
 def create_visualization(building_gdf, buffer_gdf, sites_gdf, affected_sites, height_ft, radius_m):
     """Create an interactive Folium map visualization"""
 
-    # Calculate center point
-    center = building_gdf.geometry.centroid.iloc[0]
+    # Calculate center point (project to metres first to avoid geographic CRS warning)
+    center = building_gdf.to_crs(epsg=3857).geometry.centroid.to_crs(epsg=4326).iloc[0]
     center_lat, center_lon = center.y, center.x
 
     # Create map
