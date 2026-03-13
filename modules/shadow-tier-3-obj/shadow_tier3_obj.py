@@ -52,8 +52,59 @@ ANALYSIS_INTERVAL_MIN = {
 
 
 # ---------------------------------------------------------------------------
-# OBJ metadata auto-detection
+# OBJ metadata auto-detection + footprint orientation
 # ---------------------------------------------------------------------------
+
+def detect_footprint_orientation(building_geojson):
+    """
+    Compute the dominant edge orientation of the building footprint polygon.
+
+    Returns degrees clockwise from true north (e.g. ~29 for Manhattan's grid).
+    This is used as the default model_rotation_deg so users don't have to
+    look up the street-grid angle manually.
+
+    Algorithm: find the longest outer edge of the first feature's footprint,
+    return its angle from north (0-180 degrees, since edge direction is ambiguous).
+    """
+    if isinstance(building_geojson, str):
+        building_geojson = json.loads(building_geojson)
+
+    features = building_geojson.get('features', [])
+    if not features:
+        return 0.0
+
+    geom = features[0].get('geometry', {})
+    gtype = geom.get('type', '')
+    coords = geom.get('coordinates', [])
+
+    if gtype == 'Polygon':
+        ring = coords[0]
+    elif gtype == 'MultiPolygon':
+        ring = coords[0][0]
+    else:
+        return 0.0
+
+    if len(ring) < 2:
+        return 0.0
+
+    avg_lat = sum(c[1] for c in ring) / len(ring)
+    cos_lat = math.cos(math.radians(avg_lat))
+
+    best_length = 0.0
+    best_angle = 0.0
+
+    for i in range(len(ring) - 1):
+        lon1, lat1 = ring[i][0], ring[i][1]
+        lon2, lat2 = ring[i + 1][0], ring[i + 1][1]
+        dx = (lon2 - lon1) * cos_lat * 111_319  # East, metres
+        dy = (lat2 - lat1) * 111_319             # North, metres
+        length = math.sqrt(dx ** 2 + dy ** 2)
+        if length > best_length:
+            best_length = length
+            best_angle = math.degrees(math.atan2(dx, dy)) % 180
+
+    return round(best_angle, 1)
+
 
 # Known exporters that default to Y-up in OBJ space
 _Y_UP_EXPORTERS = {'sketchup', 'blender', 'maya', 'cinema 4d', 'c4d'}
@@ -462,8 +513,6 @@ def execute(inputs):
     jurisdiction = inputs.get('jurisdiction', 'NYC')
     sensitive_sites_input = inputs.get('sensitive_sites') or inputs.get('sites_requiring_tier3')
     analysis_dates = inputs.get('analysis_dates')
-    model_rotation_deg = float(inputs.get('model_rotation_deg') or 0.0)
-
     if not building_geojson:
         raise ValueError("building_geojson is required")
     if not building_obj:
@@ -473,6 +522,14 @@ def execute(inputs):
     obj_meta = detect_obj_metadata(building_obj)
     model_up_axis = (inputs.get('model_up_axis') or obj_meta['up_axis_hint']).upper()
     model_scale = float(inputs.get('model_scale') or obj_meta['scale_hint'])
+
+    # Auto-detect rotation from footprint dominant edge; user value takes precedence
+    if inputs.get('model_rotation_deg') is not None:
+        model_rotation_deg = float(inputs['model_rotation_deg'])
+        rotation_source = 'user'
+    else:
+        model_rotation_deg = detect_footprint_orientation(building_geojson)
+        rotation_source = 'footprint'
 
     if isinstance(building_geojson, str):
         building_geojson = json.loads(building_geojson)
@@ -601,12 +658,9 @@ def execute(inputs):
             'native_unit_hint': obj_meta['native_unit_hint'],
             'apparent_height_native': obj_meta['apparent_height_native'],
             'apparent_height_m': round(max_height_m, 1),
+            'rotation_deg_used': model_rotation_deg,
+            'rotation_source': rotation_source,
             'bbox_native': obj_meta['bbox'],
-            'note': (
-                'scale and up_axis were auto-detected'
-                if not inputs.get('model_scale') and not inputs.get('model_up_axis')
-                else 'user-specified values used'
-            ),
         },
     }
 

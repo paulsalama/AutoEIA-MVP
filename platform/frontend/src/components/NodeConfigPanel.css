@@ -195,3 +195,28 @@
   margin-bottom: 6px;
   font-weight: 500;
 }
+
+.inherited-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+  gap: 8px;
+}
+
+.inherited-field-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inherited-field-row .inherited-badge {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}

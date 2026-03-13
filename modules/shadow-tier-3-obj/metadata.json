@@ -18,7 +18,7 @@
     },
     "model_rotation_deg": {
       "type": "number",
-      "description": "Degrees clockwise from north that the model's +Y axis points. 0 = true north. Use 29 for Manhattan street grid.",
+      "description": "Degrees clockwise from north that the model's +Y axis points. Auto-detected from the dominant edge of building_geojson if not specified. Override if the result looks rotated.",
       "optional": true
     },
     "model_up_axis": {

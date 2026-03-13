@@ -31,7 +31,9 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNo
     return { requiredInputs: required, optionalInputs: optional }
   }, [moduleData])
 
-  const missingRequired = Object.keys(requiredInputs).filter((k) => !configuredInputs[k])
+  const missingRequired = Object.keys(requiredInputs).filter(
+    (k) => !configuredInputs[k] && !inheritedKeys[k]
+  )
   const isReady = missingRequired.length === 0
 
   // Auto-populate fields based on jurisdiction selection
@@ -107,36 +109,58 @@ function NodeConfigPanel({ selectedNode, onUpdateNodeConfig, onClose, onDeleteNo
         {Object.keys(requiredInputs).length > 0 && (
           <div className="config-section">
             <h4>Required Inputs</h4>
-            {Object.entries(requiredInputs).map(([name, schema]) => (
-              <div key={name} className="field-with-badge">
-                <FormField
-                  name={name}
-                  schema={schema}
-                  value={configuredInputs[name]}
-                  onChange={(value) => handleFieldChange(name, value)}
-                  required={true}
-                />
-                {renderInheritedBadge(name)}
-              </div>
-            ))}
+            {Object.entries(requiredInputs).map(([name, schema]) => {
+              const displayName = name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              const source = inheritedKeys[name]
+              if (source) {
+                return (
+                  <div key={name} className="inherited-field-row">
+                    <span className="inherited-field-label">{displayName}</span>
+                    <span className="inherited-badge" title={`Provided by: ${source}`}>&#x2192; {source}</span>
+                  </div>
+                )
+              }
+              return (
+                <div key={name} className="field-with-badge">
+                  <FormField
+                    name={name}
+                    schema={schema}
+                    value={configuredInputs[name]}
+                    onChange={(value) => handleFieldChange(name, value)}
+                    required={true}
+                  />
+                </div>
+              )
+            })}
           </div>
         )}
 
         {Object.keys(optionalInputs).length > 0 && (
           <div className="config-section">
             <h4>Optional Inputs</h4>
-            {Object.entries(optionalInputs).map(([name, schema]) => (
-              <div key={name} className="field-with-badge">
-                <FormField
-                  name={name}
-                  schema={schema}
-                  value={configuredInputs[name]}
-                  onChange={(value) => handleFieldChange(name, value)}
-                  required={false}
-                />
-                {renderInheritedBadge(name)}
-              </div>
-            ))}
+            {Object.entries(optionalInputs).map(([name, schema]) => {
+              const displayName = name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              const source = inheritedKeys[name]
+              if (source) {
+                return (
+                  <div key={name} className="inherited-field-row">
+                    <span className="inherited-field-label">{displayName}</span>
+                    <span className="inherited-badge" title={`Provided by: ${source}`}>&#x2192; {source}</span>
+                  </div>
+                )
+              }
+              return (
+                <div key={name} className="field-with-badge">
+                  <FormField
+                    name={name}
+                    schema={schema}
+                    value={configuredInputs[name]}
+                    onChange={(value) => handleFieldChange(name, value)}
+                    required={false}
+                  />
+                </div>
+              )
+            })}
           </div>
         )}
 
