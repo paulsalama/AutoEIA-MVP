@@ -38,9 +38,9 @@
       "description": "Project height in feet — used for report narrative.",
       "optional": true
     },
-    "sensitive_sites_geojson": {
+    "sensitive_sites": {
       "type": "geojson",
-      "description": "Sensitive sites layer for impact assessment. Defaults to NYC DPR parks dataset if not provided.",
+      "description": "Sensitive sites for impact assessment. Auto-inherited from Tier 2 (sites surviving directional screen) or Tier 1 (sites within buffer). Defaults to full NYC DPR parks dataset if not connected.",
       "optional": true
     },
     "analysis_interval_min": {

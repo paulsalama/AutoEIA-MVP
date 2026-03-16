@@ -496,7 +496,10 @@ def execute(inputs):
     # ------------------------------------------------------------------
     # 4. Load sensitive sites
     # ------------------------------------------------------------------
-    sites_gdf = _load_sensitive_sites(inputs.get("sensitive_sites_geojson"))
+    # Accept 'sensitive_sites' (standard chain key from Tier 2) or legacy 'sensitive_sites_geojson'
+    sites_gdf = _load_sensitive_sites(
+        inputs.get("sensitive_sites") or inputs.get("sensitive_sites_geojson")
+    )
     if sites_gdf is not None and sites_gdf.crs is None:
         sites_gdf = sites_gdf.set_crs(epsg=4326)
     utm_epsg = int(

@@ -47,6 +47,10 @@
       "type": "geojson",
       "description": "GeoJSON of sites within shadow radius"
     },
+    "sensitive_sites": {
+      "type": "geojson",
+      "description": "Same as affected_sites — standard key that auto-flows to Tier 2, Tier 3, and Shadow Incremental"
+    },
     "affected_sites_count": {
       "type": "number",
       "description": "Number of sensitive sites within shadow radius"

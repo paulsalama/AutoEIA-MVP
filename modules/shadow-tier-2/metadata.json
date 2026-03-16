@@ -33,6 +33,10 @@
       "type": "geojson",
       "description": "Sensitive sites that could potentially receive shadow and require Tier 3 analysis"
     },
+    "sensitive_sites": {
+      "type": "geojson",
+      "description": "Same as sites_requiring_tier3 — standard key that auto-flows to Tier 3 and Shadow Incremental"
+    },
     "sites_eliminated": {
       "type": "geojson",
       "description": "Sensitive sites ruled out by Tier 2 directional screen"

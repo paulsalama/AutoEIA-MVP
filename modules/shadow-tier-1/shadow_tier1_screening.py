@@ -147,6 +147,9 @@ Tier 2 Analysis Triggered: {'YES' if triggered else 'NO'}
     else:
         outputs['affected_sites'] = {'type': 'FeatureCollection', 'features': []}
 
+    # sensitive_sites = same as affected_sites — standard key for downstream modules (Tier 2, Tier 3, Incremental)
+    outputs['sensitive_sites'] = outputs['affected_sites']
+
     return outputs
 
 

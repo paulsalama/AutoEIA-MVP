@@ -142,6 +142,8 @@ def execute(inputs):
 
     return {
         'sites_requiring_tier3': sites_tier3_geojson,
+        # sensitive_sites = standard pass-through key → auto-flows to Tier 3 / Shadow Incremental
+        'sensitive_sites': sites_tier3_geojson,
         'sites_eliminated': sites_eliminated_geojson,
         'no_shadow_zone': no_shadow_zone_geojson,
         'triggered': triggered,
