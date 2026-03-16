@@ -136,42 +136,52 @@ def _poly_to_wgs(polygon, utm_to_wgs):
 # Shadow projection
 # ---------------------------------------------------------------------------
 
-def _project_shadow(vertices_utm, faces, solar_altitude_deg, solar_azimuth_deg):
+def _prefilter_faces(vertices_utm, faces):
     """
-    Per-face shadow projection. Returns a Shapely polygon (UTM) or None.
+    Pre-filter: return only faces with at least one vertex above ground (z > 0.1).
+    Also resolves vertex indices and stores pre-fetched vertex tuples per face.
+    Returns list of (ground_pts, max_z) tuples for use in _project_shadow_fast.
+    """
+    n = len(vertices_utm)
+    active = []
+    for face in faces:
+        verts = [vertices_utm[i] for i in face if 0 <= i < n]
+        if len(verts) < 3:
+            continue
+        mz = max(v[2] for v in verts)
+        if mz > 0.1:
+            active.append(verts)
+    return active
 
-    Convention (matches shadow_tier3_obj.py):
-      Shadow direction = sun azimuth + 180°  (shadow falls opposite to sun)
-      Shadow tip of vertex (x, y, z):
-        tip_x = x + z / tan(alt) * sin(shadow_az)
-        tip_y = y + z / tan(alt) * cos(shadow_az)
+
+def _project_shadow(active_faces, solar_altitude_deg, solar_azimuth_deg):
+    """
+    Per-face shadow projection from pre-filtered face list.
+    active_faces: list of vertex tuples [(x,y,z), ...] — already ground-filtered.
+    Returns a Shapely polygon (UTM) or None.
     """
     from shapely.geometry import MultiPoint
     from shapely.ops import unary_union
 
     if solar_altitude_deg <= MIN_SOLAR_ALT:
         return None
+    if not active_faces:
+        return None
 
     tan_alt = math.tan(math.radians(solar_altitude_deg))
     shadow_az_rad = math.radians((solar_azimuth_deg + 180.0) % 360.0)
     sin_az = math.sin(shadow_az_rad)
     cos_az = math.cos(shadow_az_rad)
-
-    def shadow_tip(x, y, z):
-        if z <= 0.1:
-            return (x, y)
-        return (x + z / tan_alt * sin_az, y + z / tan_alt * cos_az)
+    scale = 1.0 / tan_alt
 
     shadow_polys = []
-    for face in faces:
-        verts = [vertices_utm[i] for i in face if 0 <= i < len(vertices_utm)]
-        if len(verts) < 3:
-            continue
-        # Skip faces entirely at ground level — they cast no shadow
-        if max(v[2] for v in verts) <= 0.1:
-            continue
+    for verts in active_faces:
         ground_pts = [(v[0], v[1]) for v in verts]
-        tip_pts = [shadow_tip(v[0], v[1], v[2]) for v in verts]
+        tip_pts = [
+            (v[0] + v[2] * scale * sin_az, v[1] + v[2] * scale * cos_az)
+            if v[2] > 0.1 else (v[0], v[1])
+            for v in verts
+        ]
         all_pts = ground_pts + tip_pts
         try:
             hull = MultiPoint(all_pts).convex_hull
@@ -182,11 +192,11 @@ def _project_shadow(vertices_utm, faces, solar_altitude_deg, solar_azimuth_deg):
 
     if not shadow_polys:
         return None
-    # Cascade union in chunks to avoid O(n²) Shapely behaviour on large sets
+    # Cascade union in chunks of 32 to keep individual merges fast
     while len(shadow_polys) > 1:
         next_level = []
-        for i in range(0, len(shadow_polys), 64):
-            chunk = shadow_polys[i:i + 64]
+        for i in range(0, len(shadow_polys), 32):
+            chunk = shadow_polys[i:i + 32]
             merged = unary_union(chunk)
             next_level.append(merged)
         shadow_polys = next_level
@@ -318,9 +328,19 @@ def _build_map(incremental_features, affected_sites_gdf, unaffected_sites_gdf, l
         ).add_to(m)
 
     if unaffected_sites_gdf is not None and not unaffected_sites_gdf.empty:
+        # Cap unaffected sites in map — drawing all 2000+ parks creates a huge HTML file.
+        # Show only the closest 200 to keep the visualization fast.
+        try:
+            from shapely.geometry import Point
+            center_pt = Point(lon, lat)
+            uf = unaffected_sites_gdf.copy().to_crs(epsg=4326)
+            uf["_dist"] = uf.geometry.centroid.distance(center_pt)
+            uf = uf.nsmallest(200, "_dist")
+        except Exception:
+            uf = unaffected_sites_gdf.head(200)
         folium.GeoJson(
-            json.loads(unaffected_sites_gdf.to_json()),
-            name="Sensitive sites — no incremental shadow",
+            json.loads(uf.to_json()),
+            name="Sensitive sites — no incremental shadow (nearest 200)",
             style_function=lambda _f: {
                 "fillColor": "#a78bfa", "color": "#7c3aed", "weight": 1, "fillOpacity": 0.35,
             },
@@ -467,6 +487,12 @@ def execute(inputs):
     if not verts_wa_utm or not faces_wa:
         raise ValueError("with_action_mesh_obj contains no usable geometry.")
 
+    # Pre-filter ground-level faces ONCE here — avoids re-checking inside every timestep
+    print(f"[shadow_incremental] Filtering faces: NA={len(faces_na)}, WA={len(faces_wa)}", flush=True)
+    active_na = _prefilter_faces(verts_na_utm, faces_na)
+    active_wa = _prefilter_faces(verts_wa_utm, faces_wa)
+    print(f"[shadow_incremental] Active faces after filter: NA={len(active_na)}, WA={len(active_wa)}", flush=True)
+
     # ------------------------------------------------------------------
     # 4. Load sensitive sites
     # ------------------------------------------------------------------
@@ -497,22 +523,24 @@ def execute(inputs):
             continue
 
         times = _analysis_times(lat, lon, year, month, day, interval_min)
+        print(f"[shadow_incremental] {date_str}: {len(times)} timesteps", flush=True)
         date_incremental_areas = []
         date_first_shadow = None
         date_last_shadow = None
         date_affected_sites = set()
 
-        for dt in times:
+        for t_idx, dt in enumerate(times):
             alt = get_altitude(lat, lon, dt)
             if alt <= MIN_SOLAR_ALT:
                 continue
             az = get_azimuth(lat, lon, dt)
+            print(f"[shadow_incremental]   {dt.strftime('%H:%M')} alt={alt:.1f}° az={az:.1f}°", flush=True)
 
-            # Project No-Action shadow
-            shadow_na = _project_shadow(verts_na_utm, faces_na, alt, az) if (verts_na_utm and faces_na) else None
+            # Project No-Action shadow (pre-filtered faces)
+            shadow_na = _project_shadow(active_na, alt, az) if active_na else None
 
-            # Project With-Action shadow
-            shadow_wa = _project_shadow(verts_wa_utm, faces_wa, alt, az)
+            # Project With-Action shadow (pre-filtered faces)
+            shadow_wa = _project_shadow(active_wa, alt, az)
             if shadow_wa is None:
                 continue
 
@@ -605,6 +633,7 @@ def execute(inputs):
     # ------------------------------------------------------------------
     # 7. Visualization
     # ------------------------------------------------------------------
+    print(f"[shadow_incremental] Building visualization ({len(incremental_features)} shadow snapshots)...", flush=True)
     viz_html = _build_map(
         incremental_features,
         affected_sites_gdf if affected_sites_gdf is not None and not affected_sites_gdf.empty else None,
