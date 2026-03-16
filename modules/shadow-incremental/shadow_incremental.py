@@ -167,6 +167,9 @@ def _project_shadow(vertices_utm, faces, solar_altitude_deg, solar_azimuth_deg):
         verts = [vertices_utm[i] for i in face if 0 <= i < len(vertices_utm)]
         if len(verts) < 3:
             continue
+        # Skip faces entirely at ground level — they cast no shadow
+        if max(v[2] for v in verts) <= 0.1:
+            continue
         ground_pts = [(v[0], v[1]) for v in verts]
         tip_pts = [shadow_tip(v[0], v[1], v[2]) for v in verts]
         all_pts = ground_pts + tip_pts
@@ -179,7 +182,15 @@ def _project_shadow(vertices_utm, faces, solar_altitude_deg, solar_azimuth_deg):
 
     if not shadow_polys:
         return None
-    result = unary_union(shadow_polys)
+    # Cascade union in chunks to avoid O(n²) Shapely behaviour on large sets
+    while len(shadow_polys) > 1:
+        next_level = []
+        for i in range(0, len(shadow_polys), 64):
+            chunk = shadow_polys[i:i + 64]
+            merged = unary_union(chunk)
+            next_level.append(merged)
+        shadow_polys = next_level
+    result = shadow_polys[0]
     return result if result.is_valid else None
 
 
@@ -187,30 +198,39 @@ def _project_shadow(vertices_utm, faces, solar_altitude_deg, solar_azimuth_deg):
 # Solar time window
 # ---------------------------------------------------------------------------
 
+def _find_crossing(lat, lon, year, month, day, search_start_h, search_end_h, rising):
+    """
+    Binary-search for sunrise (rising=True) or sunset (rising=False)
+    between search_start_h and search_end_h (hours, EST).
+    Returns a datetime or None.  ~10 iterations vs 216 linear scans.
+    """
+    from pysolar.solar import get_altitude
+    lo = datetime(year, month, day, search_start_h, 0, 0, tzinfo=EST)
+    hi = datetime(year, month, day, search_end_h, 0, 0, tzinfo=EST)
+    for _ in range(10):
+        mid = lo + (hi - lo) / 2
+        alt = get_altitude(lat, lon, mid)
+        if (alt > 0) == rising:
+            hi = mid
+        else:
+            lo = mid
+    result = lo + (hi - lo) / 2
+    # Verify there actually is a crossing in this range
+    alt_lo = get_altitude(lat, lon, lo)
+    alt_hi = get_altitude(lat, lon, hi)
+    if (alt_lo > 0) == (alt_hi > 0):
+        return None  # no crossing found
+    return result
+
+
 def _analysis_times(lat, lon, year, month, day, interval_min):
     """
     Return list of EST datetimes in the CEQR analysis window for this date:
     sunrise + 1.5 h  to  sunset - 1.5 h, at `interval_min` intervals.
+    Uses binary search for sunrise/sunset (~20 pysolar calls vs 216).
     """
-    from pysolar.solar import get_altitude
-
-    # Scan every 5 min to find approximate sunrise / sunset
-    sunrise_dt = None
-    sunset_dt = None
-    prev_above = False
-    for h in range(4, 22):
-        for m in range(0, 60, 5):
-            dt = datetime(year, month, day, h, m, 0, tzinfo=EST)
-            alt = get_altitude(lat, lon, dt)
-            above = alt > 0
-            if above and not prev_above:
-                sunrise_dt = dt
-            if not above and prev_above and sunrise_dt is not None:
-                sunset_dt = dt
-                break
-            prev_above = above
-        if sunset_dt:
-            break
+    sunrise_dt = _find_crossing(lat, lon, year, month, day, 4, 10, rising=True)
+    sunset_dt  = _find_crossing(lat, lon, year, month, day, 15, 21, rising=False)
 
     if not sunrise_dt or not sunset_dt:
         return []
@@ -458,8 +478,10 @@ def execute(inputs):
     )
     if sites_gdf is not None:
         sites_utm = sites_gdf.to_crs(epsg=utm_epsg)
+        sites_sindex = sites_utm.sindex  # spatial index — built once, reused every timestep
     else:
         sites_utm = None
+        sites_sindex = None
 
     # ------------------------------------------------------------------
     # 5. Iterate over analysis dates and times
@@ -533,11 +555,12 @@ def execute(inputs):
                 date_first_shadow = time_str
             date_last_shadow = time_str
 
-            # Intersect with sensitive sites
-            if sites_utm is not None:
+            # Intersect with sensitive sites via spatial index
+            if sites_utm is not None and sites_sindex is not None:
                 try:
-                    inc_series = gpd.GeoSeries([incremental], crs=f"EPSG:{utm_epsg}")
-                    hits = sites_utm[sites_utm.intersects(incremental)]
+                    candidate_idxs = list(sites_sindex.intersection(incremental.bounds))
+                    candidates = sites_utm.iloc[candidate_idxs]
+                    hits = candidates[candidates.intersects(incremental)]
                     for idx, row in hits.iterrows():
                         name = _site_name(row, idx)
                         date_affected_sites.add(name)
