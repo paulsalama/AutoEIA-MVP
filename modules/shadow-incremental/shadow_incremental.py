@@ -260,6 +260,57 @@ def _analysis_times(lat, lon, year, month, day, interval_min):
 
 
 # ---------------------------------------------------------------------------
+# Tier 3 schedule extraction
+# ---------------------------------------------------------------------------
+
+def _schedule_from_tier3(sites_affected, interval_min):
+    """
+    Build analysis schedule from Tier 3 sites_affected output.
+    Returns {date_str: [datetime, ...]} covering only the windows where
+    Tier 3 detected shadow on at least one site, plus one interval of
+    margin on each side to capture edge transitions.
+
+    sites_affected format (from shadow_tier3_projection):
+      [{site_name, date_impacts: [{date, shadow_enter, shadow_exit, ...}]}]
+    """
+    # Collect (date_str, start_dt, end_dt) tuples across all sites
+    windows = {}  # date_str -> [(start_dt, end_dt)]
+    for site in (sites_affected or []):
+        for di in site.get("date_impacts", []):
+            date_str = di.get("date", "")
+            if not date_str:
+                continue
+            # Parse "HH:MM EST" or "HH:MM"
+            enter_str = di.get("shadow_enter", "").replace(" EST", "").strip()
+            exit_str  = di.get("shadow_exit",  "").replace(" EST", "").strip()
+            try:
+                year, month, day = map(int, date_str.split("-"))
+                eh, em = map(int, enter_str.split(":"))
+                xh, xm = map(int, exit_str.split(":"))
+            except (ValueError, AttributeError):
+                continue
+            enter_dt = datetime(year, month, day, eh, em, tzinfo=EST)
+            exit_dt  = datetime(year, month, day, xh, xm, tzinfo=EST)
+            windows.setdefault(date_str, []).append((enter_dt, exit_dt))
+
+    # For each date, generate timesteps covering all windows ± one interval
+    schedule = {}
+    margin = timedelta(minutes=interval_min)
+    step   = timedelta(minutes=interval_min)
+    for date_str, date_windows in windows.items():
+        times_set = set()
+        for start_dt, end_dt in date_windows:
+            t = start_dt - margin
+            end = end_dt + margin
+            while t <= end:
+                times_set.add(t)
+                t += step
+        schedule[date_str] = sorted(times_set)
+
+    return schedule
+
+
+# ---------------------------------------------------------------------------
 # Sensitive sites loading
 # ---------------------------------------------------------------------------
 
@@ -561,19 +612,42 @@ def execute(inputs):
         )
 
     # ------------------------------------------------------------------
-    # 5. Iterate over analysis dates and times
+    # 5. Build analysis schedule
+    # ------------------------------------------------------------------
+    # If Tier 3 sites_affected is available, use only the windows where
+    # Tier 3 already found shadow on a sensitive site — no need to scan
+    # the full CEQR day. Otherwise fall back to full CEQR time sweep.
+    tier3_sites_affected = inputs.get("sites_affected")
+    if tier3_sites_affected:
+        tier3_schedule = _schedule_from_tier3(tier3_sites_affected, interval_min)
+        dates_to_analyze = [d for d in analysis_dates if d in tier3_schedule]
+        print(
+            f"[shadow_incremental] Using Tier 3 schedule: {len(dates_to_analyze)} dates, "
+            f"{sum(len(v) for v in tier3_schedule.values())} total timesteps",
+            flush=True,
+        )
+    else:
+        tier3_schedule = None
+        dates_to_analyze = list(analysis_dates)
+        print(f"[shadow_incremental] Full CEQR sweep: {len(dates_to_analyze)} dates", flush=True)
+
+    # ------------------------------------------------------------------
+    # 6. Iterate over analysis dates and times
     # ------------------------------------------------------------------
     incremental_features = []    # GeoJSON features for output
     sites_hit_detail = {}        # site_name → {date → [datetimes]}
     shadow_summary = {}          # date → summary dict
 
-    for date_str in analysis_dates:
+    for date_str in dates_to_analyze:
         try:
             year, month, day = map(int, date_str.split("-"))
         except ValueError:
             continue
 
-        times = _analysis_times(lat, lon, year, month, day, interval_min)
+        if tier3_schedule:
+            times = tier3_schedule[date_str]
+        else:
+            times = _analysis_times(lat, lon, year, month, day, interval_min)
         print(f"[shadow_incremental] {date_str}: {len(times)} timesteps", flush=True)
         date_incremental_areas = []
         date_first_shadow = None

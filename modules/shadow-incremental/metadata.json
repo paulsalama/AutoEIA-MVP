@@ -43,6 +43,11 @@
       "description": "Sensitive sites for impact assessment. Auto-inherited from Tier 2 (sites surviving directional screen) or Tier 1 (sites within buffer). Defaults to full NYC DPR parks dataset if not connected.",
       "optional": true
     },
+    "sites_affected": {
+      "type": "object",
+      "description": "Tier 3 shadow impact schedule. Auto-inherited from Shadow Tier 3. When provided, the incremental calculation runs only at the timesteps where Tier 3 already detected shadow on a sensitive site — skipping the full CEQR time sweep entirely.",
+      "optional": true
+    },
     "analysis_interval_min": {
       "type": "number",
       "description": "Time interval between shadow snapshots (minutes). Default: 60 (CEQR standard).",
