@@ -513,6 +513,54 @@ def execute(inputs):
         sites_sindex = None
 
     # ------------------------------------------------------------------
+    # 4b. Pre-compute site bearings + distances for timestep pre-filter
+    # ------------------------------------------------------------------
+    # Shadow from the building can only reach a site when the sun is roughly
+    # in the OPPOSITE direction (shadow direction ≈ site bearing from building).
+    # Pre-computing this lets us skip _project_shadow entirely for most timesteps.
+    BEARING_TOL = 60.0  # degrees — generous to account for building width/depth
+
+    if sites_utm is not None and not sites_utm.empty:
+        site_bearings = []   # bearing from building centroid to each site (degrees from north)
+        site_distances = []  # straight-line distance in metres
+        for geom in sites_utm.geometry:
+            sc = geom.centroid
+            dx, dy = sc.x - cx_utm, sc.y - cy_utm
+            dist = math.sqrt(dx * dx + dy * dy)
+            bearing = math.degrees(math.atan2(dx, dy)) % 360  # atan2(E,N) = clockwise from north
+            site_bearings.append(bearing)
+            site_distances.append(dist)
+        min_site_dist = min(site_distances) if site_distances else 0.0
+        print(
+            f"[shadow_incremental] {len(site_bearings)} sites; nearest {min_site_dist:.0f} m away",
+            flush=True,
+        )
+    else:
+        site_bearings = []
+        min_site_dist = 0.0
+
+    # Max building height from with-action mesh (to estimate max shadow length)
+    max_bldg_height_m = max(
+        (max(v[2] for v in face) for face in active_wa), default=100.0
+    )
+
+    def _shadow_can_reach_sites(solar_az_deg, solar_alt_deg):
+        """Return True if shadow direction and length could reach any site."""
+        if not site_bearings:
+            return True  # no site info → always compute (conservative)
+        shadow_dir = (solar_az_deg + 180.0) % 360.0
+        # Check shadow is long enough to reach nearest site
+        if solar_alt_deg > 0.1:
+            shadow_len = max_bldg_height_m / math.tan(math.radians(solar_alt_deg))
+            if shadow_len < min_site_dist * 0.5:  # 0.5 factor: building footprint adds reach
+                return False
+        # Check bearing matches at least one site
+        return any(
+            abs((shadow_dir - b + 180.0) % 360.0 - 180.0) <= BEARING_TOL
+            for b in site_bearings
+        )
+
+    # ------------------------------------------------------------------
     # 5. Iterate over analysis dates and times
     # ------------------------------------------------------------------
     incremental_features = []    # GeoJSON features for output
@@ -537,6 +585,12 @@ def execute(inputs):
             if alt <= MIN_SOLAR_ALT:
                 continue
             az = get_azimuth(lat, lon, dt)
+
+            # Skip this timestep if shadow direction can't reach any triggered site
+            if not _shadow_can_reach_sites(az, alt):
+                print(f"[shadow_incremental]   {dt.strftime('%H:%M')} — skipped (shadow direction away from sites)", flush=True)
+                continue
+
             print(f"[shadow_incremental]   {dt.strftime('%H:%M')} alt={alt:.1f}° az={az:.1f}°", flush=True)
 
             # Project No-Action shadow (pre-filtered faces)
