@@ -50,21 +50,25 @@
     }
   },
   "outputs": {
-    "incremental_shadows_geojson": {
-      "type": "geojson",
-      "description": "GeoJSON FeatureCollection of incremental shadow polygons (one per datetime). Each feature has date, time_est, solar_altitude_deg, incremental_area_sqft properties."
+    "triggered_sites": {
+      "type": "object",
+      "description": "Primary result: sites that receive incremental shadow, keyed by site name. Each entry lists the analysis dates on which the site is affected, with shadow entry time, exit time, and duration (EST)."
+    },
+    "affected_site_count": {
+      "type": "number",
+      "description": "Total number of sensitive sites receiving incremental shadow."
     },
     "affected_sites_geojson": {
       "type": "geojson",
-      "description": "Sensitive sites that receive any incremental shadow across all analysis days."
+      "description": "GeoJSON of triggered sensitive sites (for mapping)."
     },
     "shadow_summary": {
       "type": "object",
       "description": "Per-date summary: max incremental shadow area, affected site count, first/last shadow time."
     },
-    "affected_site_count": {
-      "type": "number",
-      "description": "Total number of sensitive sites receiving incremental shadow."
+    "incremental_shadows_geojson": {
+      "type": "geojson",
+      "description": "Shadow polygon per analysis timestep (for detailed mapping)."
     },
     "summary_report": {
       "type": "text",
@@ -72,7 +76,7 @@
     },
     "visualization": {
       "type": "html",
-      "description": "Folium map: incremental shadow polygons per date (togglable), affected sites highlighted in orange, unaffected in purple."
+      "description": "Interactive map: incremental shadow sweeps per date, triggered sites in orange, unaffected sites in purple."
     }
   },
   "test_inputs": {

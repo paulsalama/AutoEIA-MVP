@@ -653,16 +653,35 @@ def execute(inputs):
     )
 
     # ------------------------------------------------------------------
-    # 9. Return outputs
+    # 9. Build triggered_sites — primary site-centric output
+    # ------------------------------------------------------------------
+    triggered_sites = {}
+    for site_name, date_impacts in sites_hit_detail.items():
+        triggered_sites[site_name] = {}
+        for date_str, datetimes in date_impacts.items():
+            sorted_dts = sorted(datetimes)
+            entry = sorted_dts[0]
+            exit_ = sorted_dts[-1]
+            duration_min = int((exit_ - entry).total_seconds() / 60)
+            triggered_sites[site_name][date_str] = {
+                "shadow_entry_est": entry.strftime("%H:%M"),
+                "shadow_exit_est": exit_.strftime("%H:%M"),
+                "duration_min": duration_min,
+                "timesteps_affected": len(sorted_dts),
+            }
+
+    # ------------------------------------------------------------------
+    # 10. Return outputs
     # ------------------------------------------------------------------
     return {
+        "triggered_sites": triggered_sites,
+        "affected_sites_geojson": affected_sites_geojson,
+        "shadow_summary": shadow_summary,
+        "affected_site_count": affected_site_count,
         "incremental_shadows_geojson": {
             "type": "FeatureCollection",
             "features": incremental_features,
         },
-        "affected_sites_geojson": affected_sites_geojson,
-        "shadow_summary": shadow_summary,
-        "affected_site_count": affected_site_count,
         "summary_report": report,
         "visualization": viz_html,
     }
