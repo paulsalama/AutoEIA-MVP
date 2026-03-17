@@ -230,17 +230,20 @@ def _build_map(geojson, lat, lon, height_ft):
 
 def execute(inputs):
     # ------------------------------------------------------------------
-    # 1. Validate required inputs
+    # 1. Resolve project building source
     # ------------------------------------------------------------------
+    building_obj = inputs.get("building_obj")  # optional: pre-built OBJ
     building_geojson = inputs.get("building_geojson")
-    if not building_geojson:
-        raise ValueError("building_geojson is required.")
+
+    if not building_obj and not building_geojson:
+        raise ValueError("Either building_obj or building_geojson is required.")
 
     building_height_ft = inputs.get("building_height_ft")
-    if building_height_ft is None:
-        raise ValueError("building_height_ft is required.")
-    building_height_ft = float(building_height_ft)
-    building_height_m = building_height_ft * 0.3048
+    if not building_obj and building_height_ft is None:
+        raise ValueError("building_height_ft is required when building_obj is not provided.")
+    if building_height_ft is not None:
+        building_height_ft = float(building_height_ft)
+    building_height_m = building_height_ft * 0.3048 if building_height_ft is not None else None
 
     # ------------------------------------------------------------------
     # 2. Resolve project location
@@ -254,8 +257,10 @@ def execute(inputs):
             lon = float(project_location.get("lon", project_location.get("longitude", 0)))
         else:
             raise ValueError("project_location must be [lat, lon] or {lat, lon}")
-    else:
+    elif building_geojson:
         lat, lon = _centroid_of_geojson(building_geojson)
+    else:
+        raise ValueError("project_location is required when building_geojson is not provided.")
 
     # ------------------------------------------------------------------
     # 3. Resolve analysis parameters
@@ -265,11 +270,14 @@ def execute(inputs):
     analysis_dates = inputs.get("analysis_dates") or _ceqr_dates(jurisdiction, analysis_year)
 
     # ------------------------------------------------------------------
-    # 4. Extrude project building
+    # 4. Project building mesh — use supplied OBJ or extrude from footprint
     # ------------------------------------------------------------------
-    project_mesh_obj = _extrude_project_to_obj(
-        building_geojson, building_height_m, lat, lon
-    )
+    if building_obj:
+        project_mesh_obj = building_obj
+    else:
+        project_mesh_obj = _extrude_project_to_obj(
+            building_geojson, building_height_m, lat, lon
+        )
 
     # ------------------------------------------------------------------
     # 5. Assemble No-Action and With-Action scenes
@@ -281,7 +289,7 @@ def execute(inputs):
     # ------------------------------------------------------------------
     # 6. Visualization
     # ------------------------------------------------------------------
-    viz_html = _build_map(building_geojson, lat, lon, building_height_ft)
+    viz_html = _build_map(building_geojson, lat, lon, building_height_ft or 0) if building_geojson else "<p>No footprint provided — visualization unavailable</p>"
 
     # ------------------------------------------------------------------
     # 7. Return outputs

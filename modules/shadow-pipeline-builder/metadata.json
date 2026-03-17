@@ -10,13 +10,18 @@
   "inputs": {
     "building_geojson": {
       "type": "geojson",
-      "description": "Project building footprint (GeoJSON). Used to extrude the project building mesh.",
-      "optional": false
+      "description": "Project building footprint (GeoJSON). Used to extrude a box mesh when building_obj is not provided. Also used for location and visualization.",
+      "optional": true
     },
     "building_height_ft": {
       "type": "number",
-      "description": "Project building height in feet.",
-      "optional": false
+      "description": "Project building height in feet. Required when building_obj is not provided (used for box extrusion). Used as a label when building_obj is supplied.",
+      "optional": true
+    },
+    "building_obj": {
+      "type": "obj",
+      "description": "Pre-built OBJ of the project building (e.g. from an architect or Tier 3 OBJ module). If provided, skips box extrusion — use this for buildings with setbacks, tapered profiles, or complex massing. Must share the same local coordinate system as the context mesh (origin = project centroid, metres, Z-up, +Y=North).",
+      "optional": true
     },
     "project_location": {
       "type": "object",
