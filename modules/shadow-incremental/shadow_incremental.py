@@ -347,7 +347,8 @@ def _site_name(row, idx):
 # Visualization
 # ---------------------------------------------------------------------------
 
-def _build_map(incremental_features, affected_sites_gdf, unaffected_sites_gdf, lat, lon):
+def _build_map(incremental_features, affected_sites_gdf, unaffected_sites_gdf, lat, lon,
+               utm_epsg=None, cx_utm=None, cy_utm=None):
     try:
         import folium
         from shapely.geometry import mapping
@@ -382,11 +383,14 @@ def _build_map(incremental_features, affected_sites_gdf, unaffected_sites_gdf, l
         # Cap unaffected sites in map — drawing all 2000+ parks creates a huge HTML file.
         # Show only the closest 200 to keep the visualization fast.
         try:
-            from shapely.geometry import Point
-            center_pt = Point(lon, lat)
-            uf = unaffected_sites_gdf.copy().to_crs(epsg=4326)
-            uf["_dist"] = uf.geometry.centroid.distance(center_pt)
-            uf = uf.nsmallest(200, "_dist")
+            if utm_epsg and cx_utm is not None:
+                from shapely.geometry import Point as _Pt
+                uf_utm = unaffected_sites_gdf.copy().to_crs(epsg=utm_epsg)
+                center_utm = _Pt(cx_utm, cy_utm)
+                uf_utm["_dist"] = uf_utm.geometry.centroid.distance(center_utm)
+                uf = uf_utm.nsmallest(200, "_dist").to_crs(epsg=4326)
+            else:
+                uf = unaffected_sites_gdf.head(200)
         except Exception:
             uf = unaffected_sites_gdf.head(200)
         folium.GeoJson(
@@ -619,8 +623,20 @@ def execute(inputs):
     # the full CEQR day. Otherwise fall back to full CEQR time sweep.
     tier3_sites_affected = inputs.get("sites_affected")
     if tier3_sites_affected:
-        tier3_schedule = _schedule_from_tier3(tier3_sites_affected, interval_min)
-        dates_to_analyze = [d for d in analysis_dates if d in tier3_schedule]
+        tier3_schedule_raw = _schedule_from_tier3(tier3_sites_affected, interval_min)
+        # Tier 3 may use a different analysis year (e.g. 2024 metadata defaults vs 2026 pipeline year).
+        # Match on MM-DD only, then remap datetimes to the correct analysis year.
+        tier3_md_to_key = {k[5:]: k for k in tier3_schedule_raw}  # "12-21" -> "2024-12-21"
+        dates_to_analyze = []
+        tier3_schedule = {}
+        for d in analysis_dates:
+            md = d[5:]  # "12-21" from "2026-12-21"
+            if md in tier3_md_to_key:
+                src_key = tier3_md_to_key[md]
+                target_year = int(d[:4])
+                remapped = [dt.replace(year=target_year) for dt in tier3_schedule_raw[src_key]]
+                dates_to_analyze.append(d)
+                tier3_schedule[d] = remapped
         print(
             f"[shadow_incremental] Using Tier 3 schedule: {len(dates_to_analyze)} dates, "
             f"{sum(len(v) for v in tier3_schedule.values())} total timesteps",
@@ -770,6 +786,7 @@ def execute(inputs):
         affected_sites_gdf if affected_sites_gdf is not None and not affected_sites_gdf.empty else None,
         unaffected_sites_gdf if unaffected_sites_gdf is not None and not unaffected_sites_gdf.empty else None,
         lat, lon,
+        utm_epsg=utm_epsg, cx_utm=cx_utm, cy_utm=cy_utm,
     )
 
     # ------------------------------------------------------------------
