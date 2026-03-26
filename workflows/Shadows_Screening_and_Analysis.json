@@ -1,0 +1,828 @@
+{
+  "name": "Shadows Screening and Analysis",
+  "nodes": [
+    {
+      "id": "shadow_tier1_screening-1772748643104",
+      "type": "default",
+      "position": {
+        "x": 190,
+        "y": 258.7999954223633
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "🔍 Shadow Tier 1: Preliminary Screening",
+        "moduleData": {
+          "category": "shadows",
+          "description": "Initial proximity analysis: is a detailed shadow study warranted? Buffers the building footprint by 4.3x height (CEQR longest-shadow factor) and checks for sensitive sites within the study area.",
+          "display_name": "Shadow Tier 1: Preliminary Screening",
+          "emoji": "🔍",
+          "inputs": {
+            "buffer_multiplier": {
+              "default": 4.3,
+              "description": "Shadow radius multiplier (CEQR NYC default: 4.3). Override only if needed.",
+              "jurisdiction_defaults": {
+                "NYC": 4.3,
+                "generic": 4
+              },
+              "optional": true,
+              "type": "number"
+            },
+            "building_geojson": {
+              "description": "Building footprint geometry in GeoJSON format",
+              "optional": false,
+              "type": "geojson"
+            },
+            "building_height_ft": {
+              "description": "Building height in feet including all rooftop equipment",
+              "optional": false,
+              "type": "number"
+            },
+            "jurisdiction": {
+              "description": "Jurisdiction. NYC uses CEQR 4.3x buffer multiplier.",
+              "enum": [
+                "NYC",
+                "generic"
+              ],
+              "optional": false,
+              "type": "enum"
+            },
+            "sensitive_sites": {
+              "description": "Sensitive sites dataset. If omitted, uses default NYC Parks dataset.",
+              "optional": true,
+              "type": "geojson"
+            }
+          },
+          "jurisdiction": [
+            "NYC",
+            "generic"
+          ],
+          "name": "shadow_tier1_screening",
+          "outputs": {
+            "affected_sites": {
+              "description": "GeoJSON of sites within shadow radius",
+              "type": "geojson"
+            },
+            "affected_sites_count": {
+              "description": "Number of sensitive sites within shadow radius",
+              "type": "number"
+            },
+            "shadow_buffer": {
+              "description": "Buffer zone representing the longest-shadow study area",
+              "type": "geojson"
+            },
+            "summary_report": {
+              "description": "Summary of screening results",
+              "type": "text"
+            },
+            "triggered": {
+              "description": "True if any sensitive sites fall within the shadow study area (Tier 2 required)",
+              "type": "boolean"
+            },
+            "visualization": {
+              "description": "Interactive map showing buffer and intersected sites",
+              "type": "html"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-1",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-1\\shadow_tier1_screening.py"
+        },
+        "configuredInputs": {
+          "building_geojson": {
+            "type": "FeatureCollection",
+            "features": [
+              {
+                "type": "Feature",
+                "geometry": {
+                  "type": "Polygon",
+                  "coordinates": [
+                    [
+                      [
+                        -73.985758,
+                        40.757247
+                      ],
+                      [
+                        -73.984882,
+                        40.756879
+                      ],
+                      [
+                        -73.984242,
+                        40.757753
+                      ],
+                      [
+                        -73.985118,
+                        40.758121
+                      ],
+                      [
+                        -73.985758,
+                        40.757247
+                      ]
+                    ]
+                  ]
+                },
+                "properties": {
+                  "name": "Example Tall Tower",
+                  "description": "High-rise tower near Bryant Park, Midtown Manhattan — footprint aligned with Manhattan street grid (~29° from true north)",
+                  "address": "Midtown Manhattan, NYC",
+                  "suggested_height_ft": 800,
+                  "footprint_area_sqft": 43560,
+                  "stories": 60
+                }
+              }
+            ]
+          },
+          "building_height_ft": 650,
+          "jurisdiction": "NYC",
+          "buffer_multiplier": 4.3
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 65,
+      "className": "node-done",
+      "selected": true,
+      "dragging": false
+    },
+    {
+      "id": "shadow_tier2_directional-1772748645309",
+      "type": "default",
+      "position": {
+        "x": 488.9829110428194,
+        "y": 251.92126419745995
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "🧭 Shadow Tier 2: Directional Screening",
+        "moduleData": {
+          "category": "shadows",
+          "description": "CEQR Tier 2 directional screen. Eliminates sensitive resources in the triangular no-shadow zone south of the building (±108° from true north). Remaining sites proceed to Tier 3.",
+          "display_name": "Shadow Tier 2: Directional Screening",
+          "emoji": "🧭",
+          "inputs": {
+            "building_geojson": {
+              "description": "Building footprint geometry in GeoJSON format",
+              "optional": false,
+              "type": "geojson"
+            },
+            "building_height_ft": {
+              "description": "Building height in feet",
+              "optional": false,
+              "type": "number"
+            },
+            "jurisdiction": {
+              "description": "Jurisdiction for analysis. NYC uses CEQR ±108° threshold.",
+              "enum": [
+                "NYC",
+                "generic"
+              ],
+              "optional": false,
+              "type": "enum"
+            },
+            "sensitive_sites": {
+              "description": "Sensitive sites GeoJSON. If omitted, uses default NYC Parks dataset.",
+              "optional": true,
+              "type": "geojson"
+            }
+          },
+          "jurisdiction": [
+            "NYC",
+            "generic"
+          ],
+          "name": "shadow_tier2_directional",
+          "outputs": {
+            "no_shadow_zone": {
+              "description": "The triangular zone south of the building that can never receive shadow",
+              "type": "geojson"
+            },
+            "sites_eliminated": {
+              "description": "Sensitive sites ruled out by Tier 2 directional screen",
+              "type": "geojson"
+            },
+            "sites_requiring_tier3": {
+              "description": "Sensitive sites that could potentially receive shadow and require Tier 3 analysis",
+              "type": "geojson"
+            },
+            "summary_report": {
+              "description": "Summary of Tier 2 directional screening results",
+              "type": "text"
+            },
+            "triggered": {
+              "description": "True if any sensitive sites remain after Tier 2 screening (Tier 3 required)",
+              "type": "boolean"
+            },
+            "visualization": {
+              "description": "Interactive map showing building, no-shadow zone, and site classifications",
+              "type": "html"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-2",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-2\\shadow_tier2_directional.py"
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 65,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 488.9829110428194,
+        "y": 251.92126419745995
+      },
+      "dragging": false,
+      "className": "node-done"
+    },
+    {
+      "id": "shadow_tier3_projection-1772748654197",
+      "type": "default",
+      "position": {
+        "x": 750.7070895916988,
+        "y": 251.55797130079748
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "☀️ Shadow Tier 3: Shadow Projection",
+        "moduleData": {
+          "category": "shadows",
+          "description": "CEQR Tier 3 screening: accurate 3D shadow projection using pysolar ephemeris and UTM geometry. Analyzes representative days within the 1.5h-after-sunrise to 1.5h-before-sunset window (EST, no DST). Determines if shadows reach sensitive resources.",
+          "display_name": "Shadow Tier 3: Shadow Projection",
+          "emoji": "☀️",
+          "inputs": {
+            "analysis_dates": {
+              "description": "Dates for shadow analysis (YYYY-MM-DD). Defaults to CEQR representative days.",
+              "jurisdiction_defaults": {
+                "NYC": [
+                  "2024-12-21",
+                  "2024-03-21",
+                  "2024-05-06",
+                  "2024-06-21"
+                ],
+                "generic": [
+                  "2024-12-21",
+                  "2024-03-21",
+                  "2024-06-21"
+                ]
+              },
+              "optional": true,
+              "type": "array"
+            },
+            "building_geojson": {
+              "description": "Building footprint geometry in GeoJSON format",
+              "optional": false,
+              "type": "geojson"
+            },
+            "building_height_ft": {
+              "description": "Building height in feet including all rooftop equipment",
+              "optional": false,
+              "type": "number"
+            },
+            "jurisdiction": {
+              "description": "Jurisdiction determines default analysis dates. NYC uses CEQR representative days.",
+              "enum": [
+                "NYC",
+                "generic"
+              ],
+              "optional": false,
+              "type": "enum"
+            },
+            "sensitive_sites": {
+              "description": "Sensitive sites to check for shadow impacts. If omitted, uses default NYC Parks dataset.",
+              "optional": true,
+              "type": "geojson"
+            }
+          },
+          "jurisdiction": [
+            "NYC",
+            "generic"
+          ],
+          "name": "shadow_tier3_projection",
+          "outputs": {
+            "shadow_polygons": {
+              "description": "Shadow polygon for each analysis time snapshot",
+              "type": "geojson"
+            },
+            "sites_affected": {
+              "description": "Sensitive sites that receive shadow, with enter/exit times and duration per analysis day",
+              "type": "object"
+            },
+            "summary_report": {
+              "description": "Detailed report per CEQR methodology",
+              "type": "text"
+            },
+            "visualization": {
+              "description": "Interactive map showing shadow sweeps for each analysis day with sensitive sites",
+              "type": "html"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-3",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-tier-3\\shadow_tier3_projection.py"
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 65,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 750.7070895916988,
+        "y": 251.55797130079748
+      },
+      "dragging": false,
+      "className": "node-done"
+    },
+    {
+      "id": "shadow_context_builder-1773945997644",
+      "type": "default",
+      "position": {
+        "x": 1026.7030169031,
+        "y": 250.8622151879316
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "🏙️ Shadow Context Builder",
+        "moduleData": {
+          "category": "shadows",
+          "description": "Builds a 3D LOD1 massing model of all surrounding buildings from NYC Building Footprints. Required prerequisite for CEQR incremental shadow analysis (Chapter 8, §320): establishes the No-Action context so the project's incremental shadow can be isolated.",
+          "display_name": "Shadow Context Builder",
+          "emoji": "🏙️",
+          "inputs": {
+            "building_geojson": {
+              "description": "Project building footprint — used to derive project location if project_location is omitted.",
+              "optional": true,
+              "type": "geojson"
+            },
+            "building_height_ft": {
+              "description": "Project height in feet. Used to auto-compute study area radius (4.3× height + 200 ft buffer) if study_area_radius_ft is omitted.",
+              "optional": true,
+              "type": "number"
+            },
+            "project_location": {
+              "description": "[lat, lon] of project centroid. Auto-derived from building_geojson if not provided.",
+              "optional": true,
+              "type": "object"
+            },
+            "project_site_bbls": {
+              "description": "List of BBLs to exclude (alternative to project_site_bins).",
+              "optional": true,
+              "type": "array"
+            },
+            "project_site_bins": {
+              "description": "List of BINs to exclude — buildings on the project site that will be demolished or replaced.",
+              "optional": true,
+              "type": "array"
+            },
+            "study_area_radius_ft": {
+              "description": "Radius from project site to load surrounding buildings (feet). Default: 4.3 × building_height_ft + 200 ft.",
+              "optional": true,
+              "type": "number"
+            }
+          },
+          "jurisdiction": [
+            "NYC"
+          ],
+          "name": "shadow_context_builder",
+          "outputs": {
+            "building_count": {
+              "description": "Total buildings loaded into context.",
+              "type": "number"
+            },
+            "building_inventory": {
+              "description": "List of all buildings: BIN, height, height source, construction year.",
+              "type": "object"
+            },
+            "context_geojson": {
+              "description": "2D building footprints with height, BIN, and construction year for QA/visualization.",
+              "type": "geojson"
+            },
+            "context_mesh_obj": {
+              "description": "OBJ file content: LOD1 flat-top extrusions of all surrounding buildings. Meters, Z-up, +Y=North, origin at project centroid. Feed into shadow-incremental as no_action_mesh_obj.",
+              "type": "text"
+            },
+            "data_gap_report": {
+              "description": "Flags: buildings with missing height data, post-2014 buildings (no LOD2), freshness note.",
+              "type": "object"
+            },
+            "project_location": {
+              "description": "[lat, lon] of project site — passed through for downstream modules.",
+              "type": "object"
+            },
+            "study_area_radius_ft": {
+              "description": "Radius actually used (feet) — passed through for downstream modules.",
+              "type": "number"
+            },
+            "visualization": {
+              "description": "Folium map: surrounding buildings colored by height, study area circle, project marker.",
+              "type": "html"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-context-builder",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-context-builder\\shadow_context_builder.py",
+          "test_inputs": {
+            "building_height_ft": 400,
+            "project_location": [
+              40.7536,
+              -73.9832
+            ],
+            "study_area_radius_ft": 2000
+          }
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 44,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1026.7030169031,
+        "y": 250.8622151879316
+      },
+      "dragging": false,
+      "className": "node-done"
+    },
+    {
+      "id": "shadow_pipeline_builder-1773946009016",
+      "type": "default",
+      "position": {
+        "x": 1262.1603654039384,
+        "y": 243.27273274503824
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "🔧 Shadow Pipeline Builder",
+        "moduleData": {
+          "category": "shadows",
+          "description": "Takes the project building footprint and the surrounding context mesh (from Shadow Context Builder) and assembles the No-Action and With-Action scenes for CEQR incremental shadow analysis. Also configures CEQR-compliant analysis dates and time windows.",
+          "display_name": "Shadow Pipeline Builder",
+          "emoji": "🔧",
+          "inputs": {
+            "analysis_dates": {
+              "description": "List of ISO date strings to analyze (e.g. [\"2026-12-21\", \"2026-03-21\"]). Defaults to CEQR NYC standard: Dec 21, Mar 21, May 6, Jun 21.",
+              "optional": true,
+              "type": "array"
+            },
+            "building_geojson": {
+              "description": "Project building footprint (GeoJSON). Used to extrude a box mesh when building_obj is not provided. Also used for location and visualization.",
+              "optional": true,
+              "type": "geojson"
+            },
+            "building_height_ft": {
+              "description": "Project building height in feet. Required when building_obj is not provided (used for box extrusion). Used as a label when building_obj is supplied.",
+              "optional": true,
+              "type": "number"
+            },
+            "building_obj": {
+              "description": "Pre-built OBJ of the project building (e.g. from an architect or Tier 3 OBJ module). If provided, skips box extrusion — use this for buildings with setbacks, tapered profiles, or complex massing. Must share the same local coordinate system as the context mesh (origin = project centroid, metres, Z-up, +Y=North).",
+              "optional": true,
+              "type": "obj"
+            },
+            "context_mesh_obj": {
+              "description": "No-Action surrounding building massing (OBJ). Inherited from Shadow Context Builder. If omitted, With-Action scene contains only the project building.",
+              "optional": true,
+              "type": "obj"
+            },
+            "jurisdiction": {
+              "default": "NYC",
+              "description": "Jurisdiction for CEQR date/time defaults.",
+              "optional": true,
+              "options": [
+                "NYC",
+                "generic"
+              ],
+              "type": "enum"
+            },
+            "project_location": {
+              "description": "[lat, lon] of project centroid. Inherited from Shadow Context Builder. Auto-derived from building_geojson if not provided.",
+              "optional": true,
+              "type": "object"
+            },
+            "study_area_radius_ft": {
+              "description": "Study area radius in feet — passed through from Shadow Context Builder.",
+              "optional": true,
+              "type": "number"
+            }
+          },
+          "jurisdiction": [
+            "NYC"
+          ],
+          "name": "shadow_pipeline_builder",
+          "outputs": {
+            "analysis_dates": {
+              "description": "Analysis date strings (CEQR standard or user-specified).",
+              "type": "object"
+            },
+            "analysis_year": {
+              "description": "Calendar year used for solar calculations (current year).",
+              "type": "number"
+            },
+            "building_height_ft": {
+              "description": "Project height in feet — passed through.",
+              "type": "number"
+            },
+            "no_action_mesh_obj": {
+              "description": "No-Action scene OBJ (= context_mesh_obj passthrough). Feed into shadow-incremental.",
+              "type": "text"
+            },
+            "project_location": {
+              "description": "[lat, lon] passed through for shadow-incremental.",
+              "type": "object"
+            },
+            "project_mesh_obj": {
+              "description": "OBJ of project building alone. Origin at project centroid. Metres, Z-up, +Y=North. Feed into shadow-incremental as project_mesh_obj.",
+              "type": "text"
+            },
+            "study_area_radius_ft": {
+              "description": "Study area radius in feet — passed through.",
+              "type": "number"
+            },
+            "visualization": {
+              "description": "Folium map showing the project building footprint with height label.",
+              "type": "html"
+            },
+            "with_action_mesh_obj": {
+              "description": "With-Action scene OBJ: context + project building combined. Feed into shadow-incremental.",
+              "type": "text"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-pipeline-builder",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-pipeline-builder\\shadow_pipeline_builder.py",
+          "test_inputs": {
+            "building_geojson": {
+              "features": [
+                {
+                  "geometry": {
+                    "coordinates": [
+                      [
+                        [
+                          -73.984,
+                          40.753
+                        ],
+                        [
+                          -73.9825,
+                          40.753
+                        ],
+                        [
+                          -73.9825,
+                          40.7542
+                        ],
+                        [
+                          -73.984,
+                          40.7542
+                        ],
+                        [
+                          -73.984,
+                          40.753
+                        ]
+                      ]
+                    ],
+                    "type": "Polygon"
+                  },
+                  "properties": {},
+                  "type": "Feature"
+                }
+              ],
+              "type": "FeatureCollection"
+            },
+            "building_height_ft": 400,
+            "project_location": [
+              40.7536,
+              -73.9832
+            ]
+          }
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 44,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1262.1603654039384,
+        "y": 243.27273274503824
+      },
+      "dragging": false,
+      "className": "node-done"
+    },
+    {
+      "id": "shadow_incremental-1773946017569",
+      "type": "default",
+      "position": {
+        "x": 1514.0134791854944,
+        "y": 222.47414431813246
+      },
+      "sourcePosition": "right",
+      "targetPosition": "left",
+      "data": {
+        "label": "📐 Shadow Incremental Calculator",
+        "moduleData": {
+          "category": "shadows",
+          "description": "CEQR Chapter 8 incremental shadow analysis. Projects shadows from the No-Action and With-Action scenes (assembled by Shadow Pipeline Builder) and computes only the NEW shadow the project building casts — isolating the project's incremental contribution from existing shadows.",
+          "display_name": "Shadow Incremental Calculator",
+          "emoji": "📐",
+          "inputs": {
+            "analysis_dates": {
+              "description": "ISO date strings to analyze. Inherited from Shadow Pipeline Builder (CEQR standard: Dec 21, Mar 21, May 6, Jun 21).",
+              "optional": false,
+              "type": "array"
+            },
+            "analysis_interval_min": {
+              "description": "Time interval between shadow snapshots (minutes). Default: 60 (CEQR standard).",
+              "optional": true,
+              "type": "number"
+            },
+            "analysis_year": {
+              "description": "Calendar year for solar calculations. Inherited from Shadow Pipeline Builder.",
+              "optional": true,
+              "type": "number"
+            },
+            "building_height_ft": {
+              "description": "Project height in feet — used for report narrative.",
+              "optional": true,
+              "type": "number"
+            },
+            "no_action_mesh_obj": {
+              "description": "No-Action scene OBJ (context buildings only). Inherited from Shadow Pipeline Builder.",
+              "optional": false,
+              "type": "obj"
+            },
+            "project_location": {
+              "description": "[lat, lon] of project site. Inherited from Shadow Pipeline Builder.",
+              "optional": false,
+              "type": "object"
+            },
+            "sensitive_sites": {
+              "description": "Sensitive sites for impact assessment. Auto-inherited from Tier 2 (sites surviving directional screen) or Tier 1 (sites within buffer). Defaults to full NYC DPR parks dataset if not connected.",
+              "optional": true,
+              "type": "geojson"
+            },
+            "sites_affected": {
+              "description": "Tier 3 shadow impact schedule. Auto-inherited from Shadow Tier 3. When provided, the incremental calculation runs only at the timesteps where Tier 3 already detected shadow on a sensitive site — skipping the full CEQR time sweep entirely.",
+              "optional": true,
+              "type": "object"
+            },
+            "with_action_mesh_obj": {
+              "description": "With-Action scene OBJ (context + project building). Inherited from Shadow Pipeline Builder.",
+              "optional": false,
+              "type": "obj"
+            }
+          },
+          "jurisdiction": [
+            "NYC"
+          ],
+          "name": "shadow_incremental",
+          "outputs": {
+            "affected_site_count": {
+              "description": "Total number of sensitive sites receiving incremental shadow.",
+              "type": "number"
+            },
+            "affected_sites_geojson": {
+              "description": "GeoJSON of triggered sensitive sites (for mapping).",
+              "type": "geojson"
+            },
+            "incremental_shadows_geojson": {
+              "description": "Shadow polygon per analysis timestep (for detailed mapping).",
+              "type": "geojson"
+            },
+            "shadow_summary": {
+              "description": "Per-date summary: max incremental shadow area, affected site count, first/last shadow time.",
+              "type": "object"
+            },
+            "summary_report": {
+              "description": "Formatted CEQR Chapter 8 incremental shadow analysis report.",
+              "type": "text"
+            },
+            "triggered_sites": {
+              "description": "Primary result: sites that receive incremental shadow, keyed by site name. Each entry lists the analysis dates on which the site is affected, with shadow entry time, exit time, and duration (EST).",
+              "type": "object"
+            },
+            "visualization": {
+              "description": "Interactive map: incremental shadow sweeps per date, triggered sites in orange, unaffected sites in purple.",
+              "type": "html"
+            }
+          },
+          "path": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-incremental",
+          "python_file": "C:\\Users\\yoyo_\\Google Drive\\programming\\AutoEIA\\modules\\shadow-incremental\\shadow_incremental.py",
+          "test_inputs": {
+            "analysis_dates": [
+              "2026-12-21",
+              "2026-03-21"
+            ],
+            "analysis_year": 2026,
+            "building_height_ft": 400,
+            "project_location": [
+              40.7536,
+              -73.9832
+            ]
+          }
+        }
+      },
+      "style": {
+        "background": "#fff",
+        "border": "2px solid #667eea",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "minWidth": "200px"
+      },
+      "width": 200,
+      "height": 65,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1514.0134791854944,
+        "y": 222.47414431813246
+      },
+      "dragging": false,
+      "className": "node-done"
+    }
+  ],
+  "edges": [
+    {
+      "source": "shadow_tier1_screening-1772748643104",
+      "sourceHandle": null,
+      "target": "shadow_tier2_directional-1772748645309",
+      "targetHandle": null,
+      "type": "smoothstep",
+      "animated": false,
+      "markerEnd": {
+        "type": "arrowclosed"
+      },
+      "id": "reactflow__edge-shadow_tier1_screening-1772748643104-shadow_tier2_directional-1772748645309"
+    },
+    {
+      "source": "shadow_tier2_directional-1772748645309",
+      "sourceHandle": null,
+      "target": "shadow_tier3_projection-1772748654197",
+      "targetHandle": null,
+      "type": "smoothstep",
+      "animated": false,
+      "markerEnd": {
+        "type": "arrowclosed"
+      },
+      "id": "reactflow__edge-shadow_tier2_directional-1772748645309-shadow_tier3_projection-1772748654197"
+    },
+    {
+      "source": "shadow_tier3_projection-1772748654197",
+      "sourceHandle": null,
+      "target": "shadow_context_builder-1773945997644",
+      "targetHandle": null,
+      "type": "smoothstep",
+      "animated": false,
+      "markerEnd": {
+        "type": "arrowclosed"
+      },
+      "id": "reactflow__edge-shadow_tier3_projection-1772748654197-shadow_context_builder-1773945997644"
+    },
+    {
+      "source": "shadow_context_builder-1773945997644",
+      "sourceHandle": null,
+      "target": "shadow_pipeline_builder-1773946009016",
+      "targetHandle": null,
+      "type": "smoothstep",
+      "animated": false,
+      "markerEnd": {
+        "type": "arrowclosed"
+      },
+      "id": "reactflow__edge-shadow_context_builder-1773945997644-shadow_pipeline_builder-1773946009016"
+    },
+    {
+      "source": "shadow_pipeline_builder-1773946009016",
+      "sourceHandle": null,
+      "target": "shadow_incremental-1773946017569",
+      "targetHandle": null,
+      "type": "smoothstep",
+      "animated": false,
+      "markerEnd": {
+        "type": "arrowclosed"
+      },
+      "id": "reactflow__edge-shadow_pipeline_builder-1773946009016-shadow_incremental-1773946017569"
+    }
+  ],
+  "createdAt": "2026-03-19T19:31:35.158Z"
+}
