@@ -111,9 +111,20 @@ def _local_to_utm(vertices_local, cx_utm, cy_utm):
 
 def _poly_to_wgs(polygon, utm_to_wgs):
     """Convert a Shapely polygon from UTM to WGS84."""
-    from shapely.geometry import Polygon, MultiPolygon
+    from shapely.geometry import Polygon, MultiPolygon, GeometryCollection
     if polygon is None or polygon.is_empty:
         return None
+
+    # Normalize GeometryCollection (produced by .difference() on near-identical polygons)
+    # by extracting only the polygon parts.
+    if polygon.geom_type == "GeometryCollection":
+        polys = [g for g in polygon.geoms if g.geom_type in ("Polygon", "MultiPolygon")]
+        if not polys:
+            return None
+        from shapely.ops import unary_union
+        polygon = unary_union(polys)
+        if polygon is None or polygon.is_empty:
+            return None
 
     def _ring_to_wgs(ring):
         return [utm_to_wgs.transform(x, y) for x, y in ring]
@@ -266,21 +277,21 @@ def _analysis_times(lat, lon, year, month, day, interval_min):
 def _schedule_from_tier3(sites_affected, interval_min):
     """
     Build analysis schedule from Tier 3 sites_affected output.
-    Returns {date_str: [datetime, ...]} covering only the windows where
-    Tier 3 detected shadow on at least one site, plus one interval of
-    margin on each side to capture edge transitions.
+    Returns {date_str: [datetime, ...]} with exactly the timesteps where
+    Tier 3 detected shadow on at least one site (no margin — Tier 3 already
+    found the windows; we just need to verify the incremental contribution).
 
     sites_affected format (from shadow_tier3_projection):
       [{site_name, date_impacts: [{date, shadow_enter, shadow_exit, ...}]}]
     """
-    # Collect (date_str, start_dt, end_dt) tuples across all sites
-    windows = {}  # date_str -> [(start_dt, end_dt)]
+    schedule = {}  # date_str -> set of datetimes
+    step = timedelta(minutes=interval_min)
+
     for site in (sites_affected or []):
         for di in site.get("date_impacts", []):
             date_str = di.get("date", "")
             if not date_str:
                 continue
-            # Parse "HH:MM EST" or "HH:MM"
             enter_str = di.get("shadow_enter", "").replace(" EST", "").strip()
             exit_str  = di.get("shadow_exit",  "").replace(" EST", "").strip()
             try:
@@ -291,23 +302,13 @@ def _schedule_from_tier3(sites_affected, interval_min):
                 continue
             enter_dt = datetime(year, month, day, eh, em, tzinfo=EST)
             exit_dt  = datetime(year, month, day, xh, xm, tzinfo=EST)
-            windows.setdefault(date_str, []).append((enter_dt, exit_dt))
-
-    # For each date, generate timesteps covering all windows ± one interval
-    schedule = {}
-    margin = timedelta(minutes=interval_min)
-    step   = timedelta(minutes=interval_min)
-    for date_str, date_windows in windows.items():
-        times_set = set()
-        for start_dt, end_dt in date_windows:
-            t = start_dt - margin
-            end = end_dt + margin
-            while t <= end:
-                times_set.add(t)
+            # Step through the exact shadow window at interval_min increments
+            t = enter_dt
+            while t <= exit_dt:
+                schedule.setdefault(date_str, set()).add(t)
                 t += step
-        schedule[date_str] = sorted(times_set)
 
-    return schedule
+    return {d: sorted(ts) for d, ts in schedule.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +372,7 @@ def _build_map(incremental_features, affected_sites_gdf, unaffected_sites_gdf, l
             {"type": "FeatureCollection", "features": day_feats},
             name=f"Incremental shadow — {d}",
             style_function=lambda _f, c=color: {
-                "fillColor": c, "color": c, "weight": 0.5, "fillOpacity": 0.25,
+                "fillColor": c, "color": c, "weight": 1.5, "fillOpacity": 0.5,
             },
             tooltip=folium.GeoJsonTooltip(
                 fields=["time_est", "solar_altitude_deg", "incremental_area_sqft"],
@@ -503,8 +504,8 @@ def execute(inputs):
     no_action_obj = inputs.get("no_action_mesh_obj") or ""
     with_action_obj = inputs.get("with_action_mesh_obj") or ""
 
-    if not with_action_obj:
-        raise ValueError("with_action_mesh_obj is required.")
+    if not with_action_obj and not inputs.get("project_mesh_obj"):
+        raise ValueError("Either project_mesh_obj or with_action_mesh_obj is required.")
 
     project_location = inputs.get("project_location")
     if not project_location:
@@ -533,20 +534,44 @@ def execute(inputs):
     # ------------------------------------------------------------------
     # 3. Parse OBJ meshes and translate to UTM
     # ------------------------------------------------------------------
+    # No-Action mesh: context buildings only (always needed)
     verts_na_local, faces_na = _parse_obj(no_action_obj)
-    verts_wa_local, faces_wa = _parse_obj(with_action_obj)
-
     verts_na_utm = _local_to_utm(verts_na_local, cx_utm, cy_utm)
-    verts_wa_utm = _local_to_utm(verts_wa_local, cx_utm, cy_utm)
-
-    if not verts_wa_utm or not faces_wa:
-        raise ValueError("with_action_mesh_obj contains no usable geometry.")
-
-    # Pre-filter ground-level faces ONCE here — avoids re-checking inside every timestep
-    print(f"[shadow_incremental] Filtering faces: NA={len(faces_na)}, WA={len(faces_wa)}", flush=True)
     active_na = _prefilter_faces(verts_na_utm, faces_na)
-    active_wa = _prefilter_faces(verts_wa_utm, faces_wa)
-    print(f"[shadow_incremental] Active faces after filter: NA={len(active_na)}, WA={len(active_wa)}", flush=True)
+
+    # Project-building-only mesh (preferred) vs. With-Action mesh (fallback).
+    #
+    # Preferred — project_mesh_obj:
+    #   Compute shadow from the project building ALONE, then subtract context
+    #   coverage. Avoids the floating-point precision issue that occurs when
+    #   differencing two large cascaded unions (WA − NA): tiny differences in
+    #   how hundreds of context-building polygons are merged can create phantom
+    #   incremental regions anywhere in the scene.
+    #
+    # Fallback — with_action_mesh_obj:
+    #   Legacy approach (context + project combined). Less precise but still
+    #   works when project_mesh_obj is not wired.
+    project_mesh_obj_str = inputs.get("project_mesh_obj")
+    if project_mesh_obj_str:
+        verts_proj_local, faces_proj = _parse_obj(project_mesh_obj_str)
+        verts_proj_utm = _local_to_utm(verts_proj_local, cx_utm, cy_utm)
+        active_proj = _prefilter_faces(verts_proj_utm, faces_proj)
+        active_wa = None
+        print(
+            f"[shadow_incremental] Active faces: NA={len(active_na)}, proj-only={len(active_proj)} (direct mode)",
+            flush=True,
+        )
+    else:
+        verts_wa_local, faces_wa = _parse_obj(with_action_obj)
+        verts_wa_utm = _local_to_utm(verts_wa_local, cx_utm, cy_utm)
+        if not verts_wa_utm or not faces_wa:
+            raise ValueError("with_action_mesh_obj contains no usable geometry.")
+        active_wa = _prefilter_faces(verts_wa_utm, faces_wa)
+        active_proj = None
+        print(
+            f"[shadow_incremental] Active faces: NA={len(active_na)}, WA={len(active_wa)} (WA−NA mode)",
+            flush=True,
+        )
 
     # ------------------------------------------------------------------
     # 4. Load sensitive sites
@@ -594,9 +619,11 @@ def execute(inputs):
         site_bearings = []
         min_site_dist = 0.0
 
-    # Max building height from with-action mesh (to estimate max shadow length)
+    # Max building height — use project-only faces if available (more accurate),
+    # otherwise fall back to the WA mesh (which includes context buildings).
+    _height_source = active_proj if active_proj else active_wa
     max_bldg_height_m = max(
-        (max(v[2] for v in face) for face in active_wa), default=100.0
+        (max(v[2] for v in face) for face in _height_source), default=100.0
     )
 
     def _shadow_can_reach_sites(solar_az_deg, solar_alt_deg):
@@ -683,22 +710,49 @@ def execute(inputs):
 
             print(f"[shadow_incremental]   {dt.strftime('%H:%M')} alt={alt:.1f}° az={az:.1f}°", flush=True)
 
-            # Project No-Action shadow (pre-filtered faces)
+            # Context (No-Action) shadow — shared between both modes
             shadow_na = _project_shadow(active_na, alt, az) if active_na else None
 
-            # Project With-Action shadow (pre-filtered faces)
-            shadow_wa = _project_shadow(active_wa, alt, az)
-            if shadow_wa is None:
-                continue
-
             # Incremental shadow
-            if shadow_na is not None and not shadow_na.is_empty:
-                try:
-                    incremental = shadow_wa.difference(shadow_na)
-                except Exception:
-                    incremental = shadow_wa
+            if active_proj is not None:
+                # Direct mode: project shadow from the project building only, then
+                # subtract wherever context buildings already cover the ground.
+                # Much more precise than WA−NA because we diff a small clean polygon
+                # against the context union, avoiding inter-union floating-point drift.
+                shadow_proj = _project_shadow(active_proj, alt, az)
+                if shadow_proj is None:
+                    continue
+                if shadow_na is not None and not shadow_na.is_empty:
+                    try:
+                        incremental = shadow_proj.difference(shadow_na).buffer(0)
+                    except Exception:
+                        incremental = shadow_proj
+                else:
+                    incremental = shadow_proj
             else:
-                incremental = shadow_wa
+                # Fallback: WA − NA large-union difference
+                shadow_wa = _project_shadow(active_wa, alt, az)
+                if shadow_wa is None:
+                    continue
+                if shadow_na is not None and not shadow_na.is_empty:
+                    try:
+                        incremental = shadow_wa.difference(shadow_na).buffer(0)
+                    except Exception:
+                        incremental = shadow_wa
+                else:
+                    incremental = shadow_wa
+
+            # Filter tiny polygon parts — numerical slivers from difference edges
+            MIN_SLIVER_M2 = 25.0  # ~270 sq ft
+            if incremental.geom_type in ("MultiPolygon", "GeometryCollection"):
+                from shapely.ops import unary_union as _uu2
+                parts = [g for g in incremental.geoms
+                         if g.geom_type in ("Polygon", "MultiPolygon") and g.area >= MIN_SLIVER_M2]
+                if not parts:
+                    continue
+                incremental = _uu2(parts)
+            elif incremental.geom_type == "Polygon" and incremental.area < MIN_SLIVER_M2:
+                continue
 
             if incremental is None or incremental.is_empty:
                 continue

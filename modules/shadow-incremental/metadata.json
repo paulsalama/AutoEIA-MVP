@@ -13,10 +13,15 @@
       "description": "No-Action scene OBJ (context buildings only). Inherited from Shadow Pipeline Builder.",
       "optional": false
     },
+    "project_mesh_obj": {
+      "type": "obj",
+      "description": "Project-building-only OBJ. Inherited from Shadow Pipeline Builder. When provided, incremental shadow is computed as project-shadow minus no-action coverage — more precise than the WA−NA large-union difference.",
+      "optional": true
+    },
     "with_action_mesh_obj": {
       "type": "obj",
-      "description": "With-Action scene OBJ (context + project building). Inherited from Shadow Pipeline Builder.",
-      "optional": false
+      "description": "With-Action scene OBJ (context + project building). Inherited from Shadow Pipeline Builder. Optional when project_mesh_obj is connected; required otherwise.",
+      "optional": true
     },
     "project_location": {
       "type": "object",
